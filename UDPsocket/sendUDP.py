@@ -1,12 +1,33 @@
-import random
 import socket
+import sys
 
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-server_socket.bind(('', 12000))
+if len(sys.argv) < 3:
+    print("USAGE: server.py IP port")
+    sys.exit()
+
+ip = sys.argv[1]           # this is local host
+port = int(sys.argv[2])    # start port here
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 while True:
-    rand = random.randint(0, 10)
-    message, address = server_socket.recvfrom(1024)
-    message = message.upper()
-    if rand >= 4:
-        server_socket.sendto(message, address)
+    try:
+        # server must bind to an ip address and port
+        sock.bind((ip, port))
+        print("Listening on Port:", port)
+        break
+    except Exception:
+        print("ERROR: Cannot connect to Port:", port)
+        port += 1
+
+try:
+    while True:
+        message, addr = sock.recvfrom(1024)  # OK someone pinged me.
+        print(f"received from {addr}: {message}")
+        sock.sendto(b"Thank you!", addr)
+except KeyboardInterrupt:
+    pass
+finally:
+    sock.close()
+
+    

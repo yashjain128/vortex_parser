@@ -1,18 +1,32 @@
-import time
 import socket
+import sys
 
-for pings in range(10):
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    client_socket.settimeout(1.0)
-    message = b'test'
-    addr = ("127.0.0.1", 12000)
+if len(sys.argv) < 3:
+    print("USAGE: client.py IP port")
+    sys.exit()
 
-    start = time.time()
-    client_socket.sendto(message, addr)
+try:
+    ip = sys.argv[1]
+    port = int(sys.argv[2])
+except Exception:
+    print("USAGE: client.py IP port")
+    sys.exit()
+
+def listen(ip, port):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        data, server = client_socket.recvfrom(1024)
-        end = time.time()
-        elapsed = end - start
-        print(f'{data} {pings} {elapsed}')
+        print("UDP sending on Port:", port)
+        sock.settimeout(5)
+        sock.sendto("Hello".encode(), (ip, port))
+        print("message sent")
+        print("waiting for response on socket")
+        data, addr = sock.recvfrom(1024)
+        print("Received:", data.decode(), addr)
     except socket.timeout:
-        print('REQUEST TIMED OUT')
+        print("ERROR: acknowledgement was not received")
+    except Exception as ex:
+        print("ERROR:", ex)
+    finally:
+        sock.close()
+
+listen(ip, port)
