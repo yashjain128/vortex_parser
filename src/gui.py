@@ -1,11 +1,25 @@
 import sys, os
+
+from PyQt5 import QtCore
 from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox,
                              QMenu, QPushButton, QRadioButton, QWidget, QLabel, QLineEdit, QFileDialog)
 
 
 
+class QSelectedGroupBox(QGroupBox):                  
+    clicked = QtCore.pyqtSignal(str, object)     
 
-class win(QWidget):
+    def __init__(self, name, title, *args):     
+        super(QSelectedGroupBox, self).__init__(title, *args)
+        self.name = name
+        self.title = title
+
+    def mousePressEvent(self, event):
+        child = self.childAt(event.pos())
+        if not child:
+            win.toggle_read_udp(self.name)
+        
+class Window(QWidget):
     def getFile(self, title, fdir, ftype):
         self.statusLabel.setText("Pick a file")
         fname, ftypeused = QFileDialog.getOpenFileName(self, title, fdir, ftype)
@@ -16,36 +30,43 @@ class win(QWidget):
         return None
 
    
-    def chooseRecording(self):
+    def choose_recording(self):
         file_path = self.getFile("Pick a udp recording", "", "UDP Files (*.udp; *.bin);;All files (*)")
-        self.pickReadFileNameLabel.setText(os.path.basename(file_path))
         if file_path is not None:
-#            test.readfile = open(file_path, "rb")
-            pass
+            self.pickReadFileNameLabel.setText(os.path.basename(file_path))
 
-    def chooseMap(self):
+    def choose_map(self):
         file_path = self.getFile("Pick a map file", "", "Mat Map Files (*.mat);;All files (*)") 
-        self.pickMapNameLabel.setText(os.path.basename(file_path))
         if file_path is not None:
-            #test.plotting.change_map(file_path)
-            pass
+            self.pickMapNameLabel.setText(os.path.basename(file_path))
         
-    def chooseFormatFile(self):
+    def choose_instr(self):
         file_path = self.getFile("Pick an instrument file", "", "Excel Files (*.xlsx);;All files (*)")
         if file_path is not None:
-            #test.formatfunc(file_path)
-            pass
+            self.pickInstrNameLabel.setText(os.path.basename(file_path))
 
-
+    def toggle_read_udp(self, name):
+        if name=='udp':
+            self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}") 
+            self.readFileBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #aaaaaa;}")  
+            self.mode = 1
+        if name=='read':
+            self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #aaaaaa;}")
+            self.readFileBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}")
+            self.mode = 0
     def __init__(self, parent=None):
-        super(win, self).__init__(parent)
+        super(Window, self).__init__(parent)
+
+        self.mode = 0
 
         # Top ------------------------------
+        self.setupGroupBox = QGroupBox("Setup")
         self.topLayout = QGridLayout()
 
         self.pickInstrLabel = QLabel("Instrument Format (.xlsx)")
         self.pickInstrButton = QPushButton("...")
         self.pickInstrButton.setFixedWidth(24)
+        self.pickInstrButton.clicked.connect(self.choose_instr)
         self.pickInstrNameLabel = QLabel("Pick a file")
         self.pickInstrNameLabel.setStyleSheet("background-color: white")
 
@@ -55,6 +76,7 @@ class win(QWidget):
 
         self.pickMapLabel = QLabel("Map File (.mat)")
         self.pickMapButton = QPushButton("...")
+        self.pickMapButton.clicked.connect(self.choose_map)
         self.pickMapButton.setFixedWidth(24)
         self.pickMapNameLabel = QLabel("Pick a file")
         self.pickMapNameLabel.setStyleSheet("background-color: white")
@@ -65,12 +87,18 @@ class win(QWidget):
         self.topLayout.addWidget(self.pickMapNameLabel, 1, 1)
         self.topLayout.addWidget(self.pickMapButton, 1, 2)
 
-        # Read File ------------------------
-        self.readFileBox = QGroupBox("Read File")
-        self.readFileBoxLayout = QGridLayout()
+        self.toggleReadUDPLabel = QLabel("toggle Read File / UDP")
 
+
+        # Read File ------------------------
+        self.readFileBox = QSelectedGroupBox("read", "Read File")
+        self.readFileBoxLayout = QGridLayout()
+        self.readFileBox.setObjectName("ColoredGroupBox")
+        self.readFileBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}")
+        
         self.pickReadFileButton = QPushButton("...")
         self.pickReadFileButton.setFixedWidth(24)
+        self.pickReadFileButton.clicked.connect(self.choose_recording)
         self.pickReadFileNameLabel = QLabel("Pick a file")
         self.pickReadFileNameLabel.setStyleSheet("background-color: white")
 
@@ -80,8 +108,10 @@ class win(QWidget):
         self.readFileBox.setLayout(self.readFileBoxLayout)
 
         # Connection Box -------------------
-        self.liveUDPBox = QGroupBox("UDP")
+        self.liveUDPBox = QSelectedGroupBox("udp", "UDP")
         self.liveUDPBoxLayout = QGridLayout()
+        self.liveUDPBox.setObjectName("ColoredGroupBox") 
+        self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #aaaaaa;}")
 
         self.hostLabel = QLabel("Local Host")
         self.hostInputLine = QLineEdit()
@@ -103,66 +133,71 @@ class win(QWidget):
         self.setupBox.addLayout(self.topLayout, 0, 0, 1, 2)
         self.setupBox.addWidget(self.readFileBox, 1, 0, 2, 1)
         self.setupBox.addWidget(self.liveUDPBox, 1, 1, 2, 1)
+        self.setupGroupBox.setLayout(self.setupBox)
 
         # Left Box
-        dataLabel = QLabel("Collect Data")
-        dataOnOff = QPushButton("Start")
-        dataOnOff.setFixedWidth(40)
-        dataOnOff.setStyleSheet("background-color: #e34040")
-        dataOnOff.setCheckable(True)
+        self.liveControlGroupBox = QGroupBox("Live Control")
+        self.readStartLabel = QLabel("Collect Data")
+        self.readStart = QPushButton("Start")
+        self.readStart.setFixedWidth(40)
+        self.readStart.setStyleSheet("background-color: #e34040")
+        self.readStart.setCheckable(True)
         # 29d97e
 
-        writelabel = QLabel("Write to file ")
-        writeOnOff = QPushButton("Start")
-        writeOnOff.setFixedWidth(40)
-        writeOnOff.setStyleSheet("background-color: #e34040")
-        writeOnOff.setCheckable(True)
+        self.writeStartLabel = QLabel("Write to file ")
+        self.writeStart = QPushButton("Start")
+        self.writeStart.setFixedWidth(40)
+        self.writeStart.setStyleSheet("background-color: #e34040")
+        self.writeStart.setCheckable(True)
 
-        hklabel = QLabel("Housekeeping counts/units ")
-        hkCountUnit = QPushButton("Counts")
-        hkCountUnit.setFixedWidth(40)
-        hkCountUnit.setStyleSheet("background-color: #9e9e9e")
+        self.hklabel = QLabel("Housekeeping counts/units ")
+        self.hkCountUnit = QPushButton("Counts")
+        self.hkCountUnit.setFixedWidth(40)
+        self.hkCountUnit.setStyleSheet("background-color: #9e9e9e")
 
-        leftBox = QGridLayout()
-        leftBox.setRowStretch(0, 1)
-        leftBox.addWidget(dataLabel, 0, 0)
-        leftBox.addWidget(dataOnOff, 0, 1)
-        leftBox.addWidget(writelabel, 1, 0)
-        leftBox.addWidget(writeOnOff, 1, 1)
-        leftBox.addWidget(hklabel, 2, 0)
-        leftBox.addWidget(hkCountUnit, 2, 1)
+        self.leftBox = QGridLayout()
+        self.leftBox.setRowStretch(0, 1)
+        self.leftBox.addWidget(self.readStartLabel, 0, 0)
+        self.leftBox.addWidget(self.readStart, 0, 1)
+        self.leftBox.addWidget(self.writeStartLabel, 1, 0)
+        self.leftBox.addWidget(self.writeStart, 1, 1)
+        self.leftBox.addWidget(self.hklabel, 2, 0)
+        self.leftBox.addWidget(self.hkCountUnit, 2, 1)
 
         # Right Box
-        readTimeLabel = QLabel("Read Session Time")
-        readTimeOutput = QLineEdit()
-        writeTimeLabel = QLabel("Write Session Time")
-        writeTimeOutput = QLineEdit()
-        writeFileNameLabel = QLabel("Write File Name")
-        writeFileNameEdit = QLineEdit()
+        self.readTimeLabel = QLabel("Read Session Time")
+        self.readTimeOutput = QLineEdit()
+        self.writeTimeLabel = QLabel("Write Session Time")
+        self.writeTimeOutput = QLineEdit()
+        self.writeFileNameLabel = QLabel("Write File Name")
+        self.writeFileNameEdit = QLineEdit()
 
-        rightBox = QGridLayout()
-        rightBox.setRowStretch(0, 1)
-        rightBox.addWidget(readTimeLabel, 0, 0)
-        rightBox.addWidget(readTimeOutput, 0, 1)
-        rightBox.addWidget(writeTimeLabel, 1, 0)
-        rightBox.addWidget(writeTimeOutput, 1, 1)
-        rightBox.addWidget(writeFileNameLabel, 2, 0)
-        rightBox.addWidget(writeFileNameEdit, 2, 1)
+        self.rightBox = QGridLayout()
+        self.rightBox.setRowStretch(0, 1)
+        self.rightBox.addWidget(self.readTimeLabel, 0, 0)
+        self.rightBox.addWidget(self.readTimeOutput, 0, 1)
+        self.rightBox.addWidget(self.writeTimeLabel, 1, 0)
+        self.rightBox.addWidget(self.writeTimeOutput, 1, 1)
+        self.rightBox.addWidget(self.writeFileNameLabel, 2, 0)
+        self.rightBox.addWidget(self.writeFileNameEdit, 2, 1)
 
-        liveControlBox = QGridLayout()
-        liveControlBox.setColumnStretch(0, 1)
-        liveControlBox.setColumnStretch(1, 1)
-        liveControlBox.addLayout(leftBox, 0, 0)
-        liveControlBox.addLayout(rightBox, 0, 1)
+        self.liveControlBox = QGridLayout()
+        self.liveControlBox.setColumnStretch(0, 1)
+        self.liveControlBox.setColumnStretch(1, 1)
+        self.liveControlBox.addLayout(self.leftBox, 0, 0)
+        self.liveControlBox.addLayout(self.rightBox, 0, 1)
 
-
+        self.liveControlGroupBox.setLayout(self.liveControlBox)
+        self.statusLabel = QLabel("Ready")
+         
         self.mainGrid = QGridLayout()        
-        self.mainGrid.addLayout(self.setupBox, 0, 0)
-        self.mainGrid.addLayout(liveControlBox, 1, 0)
+        self.mainGrid.addWidget(self.setupGroupBox, 0, 0)
+        self.mainGrid.addWidget(self.liveControlGroupBox, 1, 0)
+        self.mainGrid.addWidget(self.statusLabel, 2, 0)
         self.setLayout(self.mainGrid)
 
 
 app = QApplication(sys.argv)
-root = win()
-root.show()
+win = Window()
+win.show()
 
