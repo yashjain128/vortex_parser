@@ -31,9 +31,9 @@ class Window(QWidget):
 
    
     def choose_recording(self):
-        file_path = self.getFile("Pick a udp recording", "", "UDP Files (*.udp; *.bin);;All files (*)")
-        if file_path is not None:
-            self.pickReadFileNameLabel.setText(os.path.basename(file_path))
+        self.read_file = self.getFile("Pick a udp recording", "", "UDP Files (*.udp; *.bin);;All files (*)")
+        if self.read_file is not None:
+            self.pickReadFileNameLabel.setText(os.path.basename(self.read_file))
 
     def choose_map(self):
         file_path = self.getFile("Pick a map file", "", "Mat Map Files (*.mat);;All files (*)") 
