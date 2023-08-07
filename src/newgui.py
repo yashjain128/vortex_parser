@@ -4,6 +4,37 @@ from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox,
 import test
 
 class win(QWidget):
+    def getFile(self, title, fdir, ftype):
+        self.statusLabel.setText("Pick a file")
+        fname, ftypeused = QFileDialog.getOpenFileName(self, title, fdir, ftype)
+        if fname:
+            self.statusLabel.setText("Ready")
+            return fname
+        self.statusLabel.setText("Ready")
+        return None
+
+   
+    def chooseRecording(self):
+        file_path = self.getFile("Pick a udp recording", "", "UDP Files (*.udp; *.bin);;All files (*)")
+        self.pickReadFileNameLabel.setText(os.path.basename(file_path))
+        if file_path is not None:
+#            test.readfile = open(file_path, "rb")
+            pass
+
+    def chooseMap(self):
+        file_path = self.getFile("Pick a map file", "", "Mat Map Files (*.mat);;All files (*)") 
+        self.pickMapNameLabel.setText(os.path.basename(file_path))
+        if file_path is not None:
+            #test.plotting.change_map(file_path)
+            pass
+        
+    def chooseFormatFile(self):
+        file_path = self.getFile("Pick an instrument file", "", "Excel Files (*.xlsx);;All files (*)")
+        if file_path is not None:
+            #test.formatfunc(file_path)
+            pass
+
+
     def __init__(self, parent=None):
         super(win, self).__init__(parent)
 
@@ -78,35 +109,6 @@ class win(QWidget):
         self.setLayout(self.mainGrid)
  
  
-    def getFile(self, title, fdir, ftype):
-        self.statusLabel.setText("Pick a file")
-        fname, ftypeused = QFileDialog.getOpenFileName(self, title, fdir, ftype)
-        if fname:
-            self.statusLabel.setText("Ready")
-            return fname
-        self.statusLabel.setText("Ready")
-        return None
-
-   
-    def chooseRecording(self):
-        file_path = self.getFile("Pick a udp recording", "", "UDP Files (*.udp; *.bin);;All files (*)")
-        self.pickReadFileNameLabel.setText(os.path.basename(file_path))
-        if file_path is not None:
-#            test.readfile = open(file_path, "rb")
-            pass
-
-    def chooseMap(self):
-        file_path = self.getFile("Pick a map file", "", "Mat Map Files (*.mat);;All files (*)")
-        if file_path is not None:
-            #test.plotting.change_map(file_path)
-            pass
-        
-    def chooseFormatFile(self):
-        file_path = self.getFile("Pick an instrument file", "", "Excel Files (*.xlsx);;All files (*)")
-        if file_path is not None:
-            #test.formatfunc(file_path)
-            pass
-
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
