@@ -1,0 +1,7 @@
+# python libraries used in this project
+# run the command:
+# $ pip install -r requirements.txt
+
+matplotlib
+pyqt5
+
