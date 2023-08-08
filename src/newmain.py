@@ -6,16 +6,16 @@ import numpy as np
 from gui import win, app
 
 MINFRAME_LEN = 2 * 40
-PACKET_LENGTH = MINFRAME_LEN + 44  # 128
-MAX_READ_LENGTH = PACKET_LENGTH * 5000  # 640000
+PACKET_LENGTH = MINFRAME_LEN + 44  
+MAX_READ_LENGTH = PACKET_LENGTH * 5000  
 SYNC = [64, 40, 107, 254]
 
 sync_arr = np.array(SYNC)
 target_sync = np.dot(sync_arr, sync_arr)
 def find_SYNC(seq):
-    candidates = np.where(np.correlate(seq, sync, mode='valid') == targetsync)[0]
+    candidates = np.where(np.correlate(seq, sync_arr, mode='valid') == target_sync)[0]
     check = candidates[:, np.newaxis] + np.arange(4)
-    mask = np.all((np.take(seq, check) == sync), axis=-1)
+    mask = np.all((np.take(seq, check) == sync_arr), axis=-1)
     return candidates[mask]   
 
 
