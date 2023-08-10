@@ -10,8 +10,8 @@ import numpy as np
 from gui import win, app
 
 MINFRAME_LEN = 2 * 40
-PACKET_LENGTH = MINFRAME_LEN + 44  # 128
-MAX_READ_LENGTH = PACKET_LENGTH * 5000  # 640000
+PACKET_LENGTH = MINFRAME_LEN + 44  
+MAX_READ_LENGTH = PACKET_LENGTH * 5000  
 SYNC = [64, 40, 107, 254]
 
 sync_arr = np.array(SYNC)

@@ -37,7 +37,7 @@ endianness = np.array([3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12, 19,
                        43, 42, 41, 40, 47, 46, 45, 44, 51, 50, 49, 48, 55, 54, 53, 52, 59, 58, 57, 56,
                        63, 62, 61, 60, 67, 66, 65, 64, 71, 70, 69, 68, 75, 74, 73, 72, 79, 78, 77, 76])
 
-def findsync(seq):
+def find_sync(seq):
     candidates = np.where(np.correlate(seq, sync, mode='valid') == targetsync)[0]
     check = candidates[:, np.newaxis] + np.arange(4)
     mask = np.all((np.take(seq, check) == sync), axis=-1)
@@ -55,7 +55,7 @@ def main():
         if rawData.size== 0:
             break
         rawData = np.append(rawData[prev_ind:], rawData)
-        inds = findSYNC(rawData)
+        inds = find_sync(rawData)
 
         prev_ind = inds[-1]
         inds = inds[:-1][(np.diff(inds) == packetlength)]
