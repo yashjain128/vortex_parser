@@ -58,6 +58,7 @@ class Window(QWidget):
         super(Window, self).__init__(parent)
 
         self.mode = 0
+        self.read_file = None
 
         # Top ------------------------------
         self.setupGroupBox = QGroupBox("Setup")
@@ -127,12 +128,25 @@ class Window(QWidget):
         self.liveUDPBoxLayout.addWidget(self.portInputLine, 1, 1)
         self.liveUDPBox.setLayout(self.liveUDPBoxLayout)
 
+        
+        
+        self.plotHertzLabel = QLabel("Plot Update Rate (Hz)")
+        self.plotHertzInput = QLineEdit(text="5")
+        self.plotWidthLabel = QLabel("Plot Width (Seconds)")
+        self.plotWidthInput= QLineEdit(text="10")
+        self.plotSettingsBox = QGridLayout()
+        self.plotSettingsBox.addWidget(self.plotHertzLabel, 0, 0)
+        self.plotSettingsBox.addWidget(self.plotHertzInput, 0, 1)
+        self.plotSettingsBox.addWidget(self.plotWidthLabel, 0, 2)
+        self.plotSettingsBox.addWidget(self.plotWidthInput, 0, 3)
+
         self.setupBox = QGridLayout()
         self.setupBox.setColumnStretch(0, 1)
         self.setupBox.setColumnStretch(1, 1)
         self.setupBox.addLayout(self.topLayout, 0, 0, 1, 2)
         self.setupBox.addWidget(self.readFileBox, 1, 0, 2, 1)
         self.setupBox.addWidget(self.liveUDPBox, 1, 1, 2, 1)
+        self.setupBox.addLayout(self.plotSettingsBox, 3, 0, 1, 2)
         self.setupGroupBox.setLayout(self.setupBox)
 
         # Left Box
@@ -167,8 +181,10 @@ class Window(QWidget):
         # Right Box
         self.readTimeLabel = QLabel("Read Session Time")
         self.readTimeOutput = QLineEdit()
+        self.readTimeOutput.setFixedWidth(100)
         self.writeTimeLabel = QLabel("Write Session Time")
-        self.writeTimeOutput = QLineEdit()
+        self.writeTimeOutput = QLineEdit() 
+        self.writeTimeOutput.setFixedWidth(100)
         self.writeFileNameLabel = QLabel("Write File Name")
         self.writeFileNameEdit = QLineEdit()
 
@@ -190,10 +206,12 @@ class Window(QWidget):
         self.liveControlGroupBox.setLayout(self.liveControlBox)
         self.statusLabel = QLabel("Ready")
          
+        ### Add all 
         self.mainGrid = QGridLayout()        
         self.mainGrid.addWidget(self.setupGroupBox, 0, 0)
         self.mainGrid.addWidget(self.liveControlGroupBox, 1, 0)
         self.mainGrid.addWidget(self.statusLabel, 2, 0)
+
         self.setLayout(self.mainGrid)
 
 

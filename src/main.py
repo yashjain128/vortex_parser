@@ -81,5 +81,4 @@ if __name__=="__main__":
     print(f"{time.time() - start_time} seconds")
     main()
     print(f"Finished in  {time.time() - start_time} seconds")
-    plotting.run(
-    )
+    plotting.run()

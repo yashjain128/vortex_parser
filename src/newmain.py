@@ -1,5 +1,9 @@
+import time
+start_time = time.time()
+
 import os, sys
 import socket
+import time
 
 import numpy as np
 
@@ -13,17 +17,19 @@ SYNC = [64, 40, 107, 254]
 sync_arr = np.array(SYNC)
 target_sync = np.dot(sync_arr, sync_arr)
 def find_SYNC(seq):
-    candidates = np.where(np.correlate(seq, sync, mode='valid') == targetsync)[0]
+    candidates = np.where(np.correlate(seq, sync_arr, mode='valid') == target_sync)[0]
     check = candidates[:, np.newaxis] + np.arange(4)
-    mask = np.all((np.take(seq, check) == sync), axis=-1)
+    mask = np.all((np.take(seq, check) == sync_arr), axis=-1)
     return candidates[mask]   
 
 
 
 def parse():
+    win.setupGroupBox.setEnabled(False)
+
     mode = win.mode
     if mode == 0:
-        read_file = open(win.read_file)
+        read_file = open(win.read_file, "rb")
     elif mode == 1:
         udp_ip = win.hostInputLine.text()
         port = win.portInputLine.text()
@@ -36,17 +42,32 @@ def parse():
     run = True
     while run:
         if mode == 0:
-            raw_data = read_file.read(MAX_READ_LENGTH)
+            raw_data = np.fromfile(read_file, dtype=np.uint8, count=MAX_READ_LENGTH)
         elif mode == 1:
             raw_data, addr = sock.recvfrom(MAX_READ_LENGTH)
 
-        inds = find_SYNC(raw_data)        
-    
+        if len(raw_data) == 0:
+            break
+        inds = find_SYNC(raw_data)       
+        prev_ind = inds[-1]
+        inds = inds[:-1][(np.diff(inds) == packetlength)]
+        inds[:-1] = inds[:-1][(np.diff(rawData[inds + 6]) != 0)]
+
+        minframes = rawData[inds[:, None] + endianness].astype(int)
+
+        oddframe = minframes[np.where(minframes[:, 57] & 3 == 1)]
+        evenframe = minframes[np.where(minframes[:, 57] & 3 == 2)]
+        oddsfid = minframes[np.where(minframes[:, 5] % 2 == 1)]
+        evensfid = minframes[np.where(minframes[:, 5] % 2 == 0)]
+
+ 
+
     
 
 
 
 win.readStart.clicked.connect(parse)
+print("--- %s seconds ---" % (time.time() - start_time))
 
 if __name__ == '__main__':
     sys.exit(app.exec_())
