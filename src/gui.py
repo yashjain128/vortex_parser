@@ -6,18 +6,17 @@ from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox,
 
 
 
-class QSelectedGroupBox(QGroupBox):                  
+class QSelectedGroupBox(QGroupBox): 
     clicked = QtCore.pyqtSignal(str, object)     
 
-    def __init__(self, name, title, *args):     
-        super(QSelectedGroupBox, self).__init__(title, *args)
-        self.name = name
-        self.title = title
-
+    def __init__(self, title, func): 
+        super(QSelectedGroupBox, self).__init__(title) 
+        self.func = func
     def mousePressEvent(self, event):
         child = self.childAt(event.pos())
         if not child:
-            win.toggle_read_udp(self.name)
+            self.func()
+            
         
 class Window(QWidget):
     def getFile(self, title, fdir, ftype):
@@ -28,7 +27,7 @@ class Window(QWidget):
             return fname
         self.statusLabel.setText("Ready")
         return None
-
+        
    
     def choose_recording(self):
         self.read_file = self.getFile("Pick a udp recording", "", "UDP Files (*.udp; *.bin);;All files (*)")
@@ -45,15 +44,15 @@ class Window(QWidget):
         if file_path is not None:
             self.pickInstrNameLabel.setText(os.path.basename(file_path))
 
-    def toggle_read_udp(self, name):
-        if name=='udp':
-            self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}") 
-            self.readFileBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #aaaaaa;}")  
-            self.mode = 1
-        if name=='read':
-            self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #aaaaaa;}")
-            self.readFileBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}")
-            self.mode = 0
+    def toggle_udp(self):
+        self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}") 
+        self.readFileBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #aaaaaa;}")  
+        self.mode = 1
+            
+    def toggle_read(self):
+        self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #aaaaaa;}")
+        self.readFileBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}")
+        self.mode = 0
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
 
@@ -92,7 +91,7 @@ class Window(QWidget):
 
 
         # Read File ------------------------
-        self.readFileBox = QSelectedGroupBox("read", "Read File")
+        self.readFileBox = QSelectedGroupBox("Read File", self.toggle_read)
         self.readFileBoxLayout = QGridLayout()
         self.readFileBox.setObjectName("ColoredGroupBox")
         self.readFileBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}")
@@ -109,7 +108,7 @@ class Window(QWidget):
         self.readFileBox.setLayout(self.readFileBoxLayout)
 
         # Connection Box -------------------
-        self.liveUDPBox = QSelectedGroupBox("udp", "UDP")
+        self.liveUDPBox = QSelectedGroupBox("UDP", self.toggle_udp)
         self.liveUDPBoxLayout = QGridLayout()
         self.liveUDPBox.setObjectName("ColoredGroupBox") 
         self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #aaaaaa;}")
@@ -213,9 +212,3 @@ class Window(QWidget):
         self.mainGrid.addWidget(self.statusLabel, 2, 0)
 
         self.setLayout(self.mainGrid)
-
-
-app = QApplication(sys.argv)
-win = Window()
-win.show()
-

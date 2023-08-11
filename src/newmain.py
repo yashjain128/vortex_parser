@@ -7,7 +7,12 @@ import time
 
 import numpy as np
 
-from gui import win, app
+from PyQt5.QtWidgets import QApplication
+from gui import Window
+from newplotting import Plotting
+
+
+
 
 MINFRAME_LEN = 2 * 40
 PACKET_LENGTH = MINFRAME_LEN + 44  
@@ -66,8 +71,14 @@ def parse():
 
 
 
-win.readStart.clicked.connect(parse)
 print("--- %s seconds ---" % (time.time() - start_time))
 
 if __name__ == '__main__':
+    app = QApplication(sys.argv)
+
+    win = Window()
+    plot = Plotting(6,win)
+    win.readStart.clicked.connect(parse)
+    win.mainGrid.addLayout(plot, 3, 0, 3, 3)
+    win.show()
     sys.exit(app.exec_())
