@@ -11,7 +11,10 @@ from scipy.io import loadmat
 
 
 mpl.style.use("fast")
-
+class Graph():
+    def __init__():
+        pass
+        
 class Plotting(QGridLayout):
     def __init__(self, n, parent):
         super(Plotting, self).__init__()
@@ -23,6 +26,7 @@ class Plotting(QGridLayout):
 
         self.gpsax2d = self.axes[0, 0]
         self.gpsax3d = self.axes[1, 0]
+        self.graphs = self.axes[:, 1:].flatten() # First column is reserved for gps
 
         self.addWidget(self.toolbar, 0, 1)
         self.addWidget(self.canvas, 1, 1)
@@ -37,4 +41,16 @@ class Plotting(QGridLayout):
         mapdata = gpsmap['ZA']    
         self.gpsax2d.imshow(mapdata, extent=[*latlim[0], *lonlim[0]])
 
- 
+    def init_graph(self, n, title, xlabel, ylabel, xlim, ylim1, ylim2 ):
+        ax = self.axes[n]
+
+        ax.set_title(title, fontsize=10, fontweight='bold')
+        ax.set_xlabel(xlabel=xlabel, fontsize=8)
+        ax.set_ylabel(ylabel=ylabel, fontsize=8)
+        ax.set_xlim(0, xlim)
+        ax.set_ylim(ylim1 * 1.1, ylim2 * 1.1)
+        ax.tick_params(axis='both', which='major', labelsize=6)
+        ax.ticklabel_format(axis='both', scilimits=(0, 0))
+        ax.yaxis.get_offset_text().set_fontsize(6)
+        ax.xaxis.get_offset_text().set_fontsize(6)
+        lines = []

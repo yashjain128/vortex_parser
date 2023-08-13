@@ -16,7 +16,12 @@ Install Python
 Install the required libraries from the `requirements.txt` file through the command:  
 ```$ pip install -r requirements.txt```
 
-Or download the libraries manually
+Or download the libraries manually:   
+`numpy`  
+`matplotlib`  
+`pyqt5`  
+`openpyxl`  
+
 
 
 Run ```main.py``` from the source folder
