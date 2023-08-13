@@ -1,19 +1,26 @@
-import time
-start_time = time.time()
+'''
+This script is for running 
 
+'''
+
+
+import time
 import os, sys
 import socket
-import time
+start_time = time.time()
 
 import numpy as np
+from pandas import read_excel
 
 from PyQt5.QtWidgets import QApplication
+
 from gui import Window
 from newplotting import Plotting
 
+# True to turn on debugging
+dbg = True 
 
-
-
+# Constants
 MINFRAME_LEN = 2 * 40
 PACKET_LENGTH = MINFRAME_LEN + 44  
 MAX_READ_LENGTH = PACKET_LENGTH * 5000  
@@ -24,6 +31,12 @@ endianness = np.array([3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12, 19,
                        23, 22, 21, 20, 27, 26, 25, 24, 31, 30, 29, 28, 35, 34, 33, 32, 39, 38, 37, 36,
                        43, 42, 41, 40, 47, 46, 45, 44, 51, 50, 49, 48, 55, 54, 53, 52, 59, 58, 57, 56,
                        63, 62, 61, 60, 67, 66, 65, 64, 71, 70, 69, 68, 75, 74, 73, 72, 79, 78, 77, 76])
+
+def open_excel():
+    plot = None
+    win.mainGrid.addLayout(plot, 3, 3, 3, 3)    
+    
+    pass
 
 sync_arr = np.array(SYNC)
 target_sync = np.dot(sync_arr, sync_arr)
@@ -45,7 +58,8 @@ def parse():
         udp_ip = win.hostInputLine.text()
         port = win.portInputLine.text()
 
-        print(udp_ip, port)    
+        if dbg:
+            print(f"[Debug] Connected\nIP: {udp_ip}\n Port: {port}")    
         sock = socket.socket(socket.AF_INET, # Internet
                      socket.SOCK_DGRAM) # UDP
         sock.bind((udp_ip, port))
@@ -61,7 +75,7 @@ def parse():
             break
         inds = find_SYNC(raw_data)       
         prev_ind = inds[-1]
-        inds = inds[:-1][(np.diff(inds) == packetlength)]
+        inds = inds[:-1][(np.diff(inds) == PACKET_LENGTH)]
         inds[:-1] = inds[:-1][(np.diff(raw_data[inds + 6]) != 0)]
 
         minframes = raw_data[inds[:, None] + endianness].astype(int)
@@ -71,20 +85,14 @@ def parse():
         oddsfid = minframes[np.where(minframes[:, 5] % 2 == 1)]
         evensfid = minframes[np.where(minframes[:, 5] % 2 == 0)]
 
- 
-
-    
-
-
-
-print("--- %s seconds ---" % (time.time() - start_time))
+if dbg:
+    print(f"--- {time.time()-start_time} ---")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
 
     win = Window()
-    plot = Plotting(6,win)
     win.readStart.clicked.connect(parse)
-    win.mainGrid.addLayout(plot, 3, 0, 3, 3)    
+    
     win.show()
     sys.exit(app.exec_())
