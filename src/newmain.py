@@ -2,8 +2,6 @@
 This script is for running 
 
 '''
-
-
 import time
 import os, sys
 import socket
@@ -86,7 +84,7 @@ def parse():
         evensfid = minframes[np.where(minframes[:, 5] % 2 == 0)]
 
 if dbg:
-    print(f"--- {time.time()-start_time} ---")
+    print(f"[Debug] {time.time()-start_time} s")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
