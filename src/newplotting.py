@@ -13,46 +13,49 @@ from scipy.io import loadmat
 
 
 mpl.style.use("fast")
-class Graph():
-    def __init__():
-        pass
         
 class Plotting(QGridLayout):
     def __init__(self, n, parent):
         super(Plotting, self).__init__()
 
-        self.fig, self.axes = plt.subplots(nrows=2, ncols=(n+2)//2)
-         
+        self.fig = plt.figure()
+        self.gpsfig, self.pltfig = self.fig.subfigures(1, 2)
+
+        self.gpsax2d = self.gpsfig.add_subplot(2, 1, 1)
+        self.gpsax3d = self.gpsfig.add_subplot(2, 1, 2)
+        self.pltaxes = []
+
+        # Convert matplotlib fig and toolbar into pyqt widgets
         self.canvas = FigureCanvas(self.fig)
         self.toolbar = NavigationToolbar(self.canvas, parent)
-
-        self.gpsax2d = self.axes[0, 0]
-        self.gpsax3d = self.axes[1, 0]
-        self.graphs = self.axes[:, 1:].flatten() # First column is reserved for gps
-
         self.addWidget(self.toolbar, 0, 1)
         self.addWidget(self.canvas, 1, 1)
         
-        #self.fig.subplots_adjust(left=0.1, bottom=0.1, right=0.9 , top=0.9, hspace=0.4)
         self.fig.tight_layout()
 
-    def start_excel(file_path):
+    def start_excel(self, file_path):
         formatloc = read_excel(file_path, 'Format', skiprows=0, nrows=3, usecols="C:D", names=[0, 1])
-      
+        
+        self.pltfig.clf()
+        self.pltfig.subplots()
+        
+        self.graphs = self.axes.flatten()
+
         graphformat = read_excel(file_path, 'Format', skiprows=formatloc[0][0] - 1, nrows=formatloc[1][0], usecols="C:H", names=range(6))
+        for ind, row in graphformat.iterrows():
+            self.init_graph(ind, *row)
 
-        for index, row in graphformat.iterrows():
-            plotting.DataGraph(index, *row)
+        
 
-        instrumentformat = read_excel(file_path, 'Format', skiprows=formatloc[0][1] - 1, nrows=formatloc[1][1], usecols="C:O", names=range(0, 13))
+        ## instrumentformat = read_excel(file_path, 'Format', skiprows=formatloc[0][1] - 1, nrows=formatloc[1][1], usecols="C:O", names=range(0, 13))
 
-        for index, row in instrumentformat.iterrows():
-            g, color, protocol, signed, *bytedata = row.tolist()
-            plotting.graphs[g].addline(color, protocol, signed, bytedata)
+        ## for index, row in instrumentformat.iterrows():
+        ##     g, color, protocol, signed, *bytedata = row.tolist()
+        ##     plotting.graphs[g].addline(color, protocol, signed, bytedata)
 
-        housekeepingformat = read_excel(file_path, 'Format', skiprows=formatloc[0][2] - 1, nrows=formatloc[1][2], usecols="C:J", names=range(0, 8))
-        for index, row in housekeepingformat.iterrows():
-            plotting.HouseKeepingData(*row)
+        ## housekeepingformat = read_excel(file_path, 'Format', skiprows=formatloc[0][2] - 1, nrows=formatloc[1][2], usecols="C:J", names=range(0, 8))
+        ## for index, row in housekeepingformat.iterrows():
+        ##     plotting.HouseKeepingData(*row)
     
     def add_map(self, map_file):       
         gpsmap = loadmat(map_file)
@@ -74,3 +77,5 @@ class Plotting(QGridLayout):
         ax.yaxis.get_offset_text().set_fontsize(6)
         ax.xaxis.get_offset_text().set_fontsize(6)
         lines = []
+
+plot = Plotting()

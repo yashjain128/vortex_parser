@@ -13,7 +13,7 @@ from pandas import read_excel
 from PyQt5.QtWidgets import QApplication
 
 from gui import Window
-from newplotting import Plotting
+import newplotting
 
 # True to turn on debugging
 dbg = True 
@@ -30,11 +30,6 @@ endianness = np.array([3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12, 19,
                        43, 42, 41, 40, 47, 46, 45, 44, 51, 50, 49, 48, 55, 54, 53, 52, 59, 58, 57, 56,
                        63, 62, 61, 60, 67, 66, 65, 64, 71, 70, 69, 68, 75, 74, 73, 72, 79, 78, 77, 76])
 
-def open_excel():
-    plot = None
-    win.mainGrid.addLayout(plot, 3, 3, 3, 3)    
-    
-    pass
 
 sync_arr = np.array(SYNC)
 target_sync = np.dot(sync_arr, sync_arr)
@@ -61,6 +56,7 @@ def parse():
         sock = socket.socket(socket.AF_INET, # Internet
                      socket.SOCK_DGRAM) # UDP
         sock.bind((udp_ip, port))
+    
 
     run = True
     while run:

@@ -4,7 +4,7 @@ from PyQt5 import QtCore
 from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox,
                              QMenu, QPushButton, QRadioButton, QWidget, QLabel, QLineEdit, QFileDialog)
 
-
+import newplotting
 
 class QSelectedGroupBox(QGroupBox): 
     clicked = QtCore.pyqtSignal(str, object)     
@@ -27,7 +27,6 @@ class Window(QWidget):
             return fname
         self.statusLabel.setText("Ready")
         return None
-        
    
     def choose_recording(self):
         self.read_file = self.getFile("Pick a udp recording", "", "UDP Files (*.udp; *.bin);;All files (*)")
@@ -43,6 +42,7 @@ class Window(QWidget):
         file_path = self.getFile("Pick an instrument file", "", "Excel Files (*.xlsx);;All files (*)")
         if file_path is not None:
             self.pickInstrNameLabel.setText(os.path.basename(file_path))
+        newplotting.plot.start_excel(file_path)
 
     def toggle_udp(self):
         self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}") 
@@ -53,6 +53,7 @@ class Window(QWidget):
         self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #aaaaaa;}")
         self.readFileBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}")
         self.mode = 0
+
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
 
