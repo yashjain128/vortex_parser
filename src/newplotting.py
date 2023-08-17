@@ -15,11 +15,11 @@ from scipy.io import loadmat
 mpl.style.use("fast")
         
 class Plotting(QGridLayout):
-    def __init__(self, n, parent):
+    def __init__(self, parent):
         super(Plotting, self).__init__()
 
         self.fig = plt.figure()
-        self.gpsfig, self.pltfig = self.fig.subfigures(1, 2)
+        self.gpsfig, self.pltfig = self.fig.subfigures(1, 2, squeeze=True)
 
         self.gpsax2d = self.gpsfig.add_subplot(2, 1, 1)
         self.gpsax3d = self.gpsfig.add_subplot(2, 1, 2)
@@ -28,6 +28,7 @@ class Plotting(QGridLayout):
         # Convert matplotlib fig and toolbar into pyqt widgets
         self.canvas = FigureCanvas(self.fig)
         self.toolbar = NavigationToolbar(self.canvas, parent)
+        self.toolbar.setVisible(False)
         self.addWidget(self.toolbar, 0, 1)
         self.addWidget(self.canvas, 1, 1)
         
@@ -35,16 +36,12 @@ class Plotting(QGridLayout):
 
     def start_excel(self, file_path):
         formatloc = read_excel(file_path, 'Format', skiprows=0, nrows=3, usecols="C:D", names=[0, 1])
-        
         self.pltfig.clf()
-        self.pltfig.subplots()
-        
-        self.graphs = self.axes.flatten()
-
+        self.pltaxes = self.pltfig.subplots(2, (formatloc[1][0]+1)//2).flatten()
         graphformat = read_excel(file_path, 'Format', skiprows=formatloc[0][0] - 1, nrows=formatloc[1][0], usecols="C:H", names=range(6))
         for ind, row in graphformat.iterrows():
             self.init_graph(ind, *row)
-
+        self.fig.canvas.draw()
         
 
         ## instrumentformat = read_excel(file_path, 'Format', skiprows=formatloc[0][1] - 1, nrows=formatloc[1][1], usecols="C:O", names=range(0, 13))
@@ -65,7 +62,7 @@ class Plotting(QGridLayout):
         self.gpsax2d.imshow(mapdata, extent=[*latlim[0], *lonlim[0]])
 
     def init_graph(self, n, title, xlabel, ylabel, xlim, ylim1, ylim2 ):
-        ax = self.axes[n]
+        ax = self.pltaxes[n]
 
         ax.set_title(title, fontsize=10, fontweight='bold')
         ax.set_xlabel(xlabel=xlabel, fontsize=8)
@@ -78,4 +75,4 @@ class Plotting(QGridLayout):
         ax.xaxis.get_offset_text().set_fontsize(6)
         lines = []
 
-plot = Plotting()
+plot = None

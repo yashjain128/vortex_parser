@@ -13,11 +13,13 @@ from pandas import read_excel
 from PyQt5.QtWidgets import QApplication
 
 from gui import Window
-import newplotting
-
+import newplotting as plotting
 # True to turn on debugging
-dbg = True 
+dbg = True
 
+if dbg:
+    print(f"[Debug] {time.time()-start_time} s")
+    
 # Constants
 MINFRAME_LEN = 2 * 40
 PACKET_LENGTH = MINFRAME_LEN + 44  
@@ -87,6 +89,9 @@ if __name__ == '__main__':
 
     win = Window()
     win.readStart.clicked.connect(parse)
-    
+
+    plotting.plot = plotting.Plotting(win)
+    #win.mainGrid.addLayout(plotting.plot, 3, 3)
+
     win.show()
     sys.exit(app.exec_())
