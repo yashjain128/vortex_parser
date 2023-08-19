@@ -2,3 +2,8 @@ dynamic endianness
 
 make newplotting not oop
 
+add writing to file functionality
+
+create a file search system
+
+read/write session times
