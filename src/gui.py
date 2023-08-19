@@ -1,4 +1,5 @@
 import sys, os
+from datetime import datetime
 
 from PyQt5 import QtCore
 from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox,
@@ -45,22 +46,36 @@ class Window(QWidget):
             print(plotting.plot)
             plotting.plot.start_excel(file_path)
 
-    def toggle_udp(self):
+    def toggle_to_udp(self):
         self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}") 
         self.readFileBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #aaaaaa;}")  
-        self.mode = 1
+        self.read_mode = 1
             
-    def toggle_read(self):
+    def toggle_to_read(self):
         self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #aaaaaa;}")
         self.readFileBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}")
-        self.mode = 0
+        self.read_mode = 0
+
+    def toggle_write(self):
+        if self.do_write:
+            self.writeStart.setStyleSheet("background-color: #e34040")
+            self.do_write=False
+            self.writeFileNameEdit.setEnabled(True)
+            self.write_file.close()
+        else:
+            self.writeStart.setStyleSheet("background-color: #29d97e")
+            self.do_write=True
+            self.writeFileNameEdit.setEnabled(False) 
+            self.write_file = open("../recordings/"+self.writeFileNameEdit.text(), "ab")
 
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
 
-        self.mode = 0
+        self.read_mode = 0
         self.read_file = None
 
+        self.do_write = False
+        self.write_file = None
         # Top ------------------------------
         self.setupGroupBox = QGroupBox("Setup")
         self.topLayout = QGridLayout()
@@ -93,7 +108,7 @@ class Window(QWidget):
 
 
         # Read File ------------------------
-        self.readFileBox = QSelectedGroupBox("Read File", self.toggle_read)
+        self.readFileBox = QSelectedGroupBox("Read File", self.toggle_to_read)
         self.readFileBoxLayout = QGridLayout()
         self.readFileBox.setObjectName("ColoredGroupBox")
         self.readFileBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}")
@@ -110,7 +125,7 @@ class Window(QWidget):
         self.readFileBox.setLayout(self.readFileBoxLayout)
 
         # Connection Box -------------------
-        self.liveUDPBox = QSelectedGroupBox("UDP", self.toggle_udp)
+        self.liveUDPBox = QSelectedGroupBox("UDP", self.toggle_to_udp)
         self.liveUDPBoxLayout = QGridLayout()
         self.liveUDPBox.setObjectName("ColoredGroupBox") 
         self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #aaaaaa;}")
@@ -164,6 +179,7 @@ class Window(QWidget):
         self.writeStart.setFixedWidth(40)
         self.writeStart.setStyleSheet("background-color: #e34040")
         self.writeStart.setCheckable(True)
+        self.writeStart.clicked.connect(self.toggle_write)
 
         self.hklabel = QLabel("Housekeeping counts/units ")
         self.hkCountUnit = QPushButton("Counts")
@@ -182,12 +198,15 @@ class Window(QWidget):
         # Right Box
         self.readTimeLabel = QLabel("Read Session Time")
         self.readTimeOutput = QLineEdit()
-        self.readTimeOutput.setFixedWidth(100)
+        self.readTimeOutput.setReadOnly(True)
+        self.readTimeOutput.setFixedWidth(120)
         self.writeTimeLabel = QLabel("Write Session Time")
         self.writeTimeOutput = QLineEdit() 
-        self.writeTimeOutput.setFixedWidth(100)
+        self.writeTimeOutput.setReadOnly(True)
+        self.writeTimeOutput.setFixedWidth(120)
         self.writeFileNameLabel = QLabel("Write File Name")
-        self.writeFileNameEdit = QLineEdit()
+        self.writeFileNameEdit = QLineEdit("Recording"+datetime.today().strftime('%Y-%m-%d'))
+        self.writeFileNameEdit.setFixedWidth(120)
 
         self.rightBox = QGridLayout()
         self.rightBox.setRowStretch(0, 1)

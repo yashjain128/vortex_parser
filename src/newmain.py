@@ -45,8 +45,10 @@ def find_SYNC(seq):
 
 def parse():
     win.setupGroupBox.setEnabled(False)
-
-    mode = win.mode
+    plotting.plot.show()
+    mode = win.read_mode
+    read_file = None
+    write_file = None
     if mode == 0:
         read_file = open(win.read_file, "rb")
     elif mode == 1:
@@ -58,7 +60,7 @@ def parse():
         sock = socket.socket(socket.AF_INET, # Internet
                      socket.SOCK_DGRAM) # UDP
         sock.bind((udp_ip, port))
-    
+
 
     run = True
     while run:
@@ -69,6 +71,10 @@ def parse():
 
         if len(raw_data) == 0:
             break
+        
+        if win.do_write:
+            raw_data.tofile(win.write_file)
+
         inds = find_SYNC(raw_data)       
         prev_ind = inds[-1]
         inds = inds[:-1][(np.diff(inds) == PACKET_LENGTH)]
@@ -91,7 +97,7 @@ if __name__ == '__main__':
     win.readStart.clicked.connect(parse)
 
     plotting.plot = plotting.Plotting(win)
-    #win.mainGrid.addLayout(plotting.plot, 3, 3)
-
+    win.mainGrid.addWidget(plotting.plot, 3, 3)
+    plotting.plot.hide()
     win.show()
     sys.exit(app.exec_())

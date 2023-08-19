@@ -1,7 +1,7 @@
 import os, sys
 import numpy as np
 
-from PyQt5.QtWidgets import QDialog, QApplication, QPushButton, QGridLayout
+from PyQt5.QtWidgets import QDialog, QApplication, QPushButton, QGridLayout, QFrame
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -14,9 +14,11 @@ from scipy.io import loadmat
 
 mpl.style.use("fast")
         
-class Plotting(QGridLayout):
+class Plotting(QFrame):
     def __init__(self, parent):
         super(Plotting, self).__init__()
+
+        self.layout = QGridLayout()
 
         self.fig = plt.figure()
         self.gpsfig, self.pltfig = self.fig.subfigures(1, 2, squeeze=True)
@@ -29,10 +31,11 @@ class Plotting(QGridLayout):
         self.canvas = FigureCanvas(self.fig)
         self.toolbar = NavigationToolbar(self.canvas, parent)
         self.toolbar.setVisible(False)
-        self.addWidget(self.toolbar, 0, 1)
-        self.addWidget(self.canvas, 1, 1)
+        self.layout.addWidget(self.toolbar, 0, 1)
+        self.layout.addWidget(self.canvas, 1, 1)
         
         self.fig.tight_layout()
+        self.setLayout(self.layout)
 
     def start_excel(self, file_path):
         formatloc = read_excel(file_path, 'Format', skiprows=0, nrows=3, usecols="C:D", names=[0, 1])
