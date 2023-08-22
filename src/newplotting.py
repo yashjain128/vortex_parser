@@ -1,7 +1,7 @@
 import os, sys
 import numpy as np
 
-from PyQt5.QtWidgets import QDialog, QApplication, QPushButton, QGridLayout, QFrame
+from PyQt5.QtWidgets import QDialog, QApplication, QPushButton, QGridLayout, QFrame, QWidget
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -14,8 +14,8 @@ from scipy.io import loadmat
 
 mpl.style.use("fast")
         
-class Plotting(QFrame):
-    def __init__(self, parent):
+class Plotting(QWidget):
+    def __init__(self):
         super(Plotting, self).__init__()
 
         self.layout = QGridLayout()
@@ -29,13 +29,12 @@ class Plotting(QFrame):
 
         # Convert matplotlib fig and toolbar into pyqt widgets
         self.canvas = FigureCanvas(self.fig)
-        self.toolbar = NavigationToolbar(self.canvas, parent)
+        self.toolbar = NavigationToolbar(self.canvas, self)
         self.toolbar.setVisible(False)
         self.layout.addWidget(self.toolbar, 0, 1)
         self.layout.addWidget(self.canvas, 1, 1)
-        
-        self.fig.tight_layout()
-        self.setLayout(self.layout)
+
+        self.setLayout(self.layout) 
 
     def start_excel(self, file_path):
         formatloc = read_excel(file_path, 'Format', skiprows=0, nrows=3, usecols="C:D", names=[0, 1])
@@ -45,6 +44,9 @@ class Plotting(QFrame):
         for ind, row in graphformat.iterrows():
             self.init_graph(ind, *row)
         self.fig.canvas.draw()
+
+        
+        self.show()
         
 
         ## instrumentformat = read_excel(file_path, 'Format', skiprows=formatloc[0][1] - 1, nrows=formatloc[1][1], usecols="C:O", names=range(0, 13))
@@ -78,4 +80,3 @@ class Plotting(QFrame):
         ax.xaxis.get_offset_text().set_fontsize(6)
         lines = []
 
-plot = None

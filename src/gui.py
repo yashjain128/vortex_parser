@@ -1,10 +1,9 @@
 import sys, os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from PyQt5 import QtCore
 from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox,
                              QMenu, QPushButton, QRadioButton, QWidget, QLabel, QLineEdit, QFileDialog)
-
 import newplotting as plotting
 
 class QSelectedGroupBox(QGroupBox): 
@@ -38,12 +37,11 @@ class Window(QWidget):
         file_path = self.getFile("Pick a map file", "", "Mat Map Files (*.mat);;All files (*)") 
         if file_path is not None:
             self.pickMapNameLabel.setText(os.path.basename(file_path))
-        
+        plotting.plot 
     def choose_instr(self):
         file_path = self.getFile("Pick an instrument file", "", "Excel Files (*.xlsx);;All files (*)")
         if file_path is not None:
             self.pickInstrNameLabel.setText(os.path.basename(file_path))
-            print(plotting.plot)
             plotting.plot.start_excel(file_path)
 
     def toggle_to_udp(self):
@@ -66,16 +64,31 @@ class Window(QWidget):
             self.writeStart.setStyleSheet("background-color: #29d97e")
             self.do_write=True
             self.writeFileNameEdit.setEnabled(False) 
-            self.write_file = open("../recordings/"+self.writeFileNameEdit.text(), "ab")
+            self.write_file = open("../recordings/"+self.writeFileNameEdit.text()+".udp", "ab")
+    
+    def time_start(self):
+        self.timer.start(1000)
+    
+    def time_run(self):
+        self.read_time+=1
+        self.readTimeOutput.setText(str(timedelta(seconds=self.read_time)))
+        if self.do_write:
+            self.write_time+=1
+            self.writeTimeOutput.setText(self.write_time.elapsed())
 
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
 
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.time_run)
+
         self.read_mode = 0
         self.read_file = None
+        self.read_time = 0
 
         self.do_write = False
         self.write_file = None
+        self.write_time = 0
         # Top ------------------------------
         self.setupGroupBox = QGroupBox("Setup")
         self.topLayout = QGridLayout()
@@ -197,11 +210,11 @@ class Window(QWidget):
 
         # Right Box
         self.readTimeLabel = QLabel("Read Session Time")
-        self.readTimeOutput = QLineEdit()
+        self.readTimeOutput = QLineEdit(text="0:00:00", alignment=QtCore.Qt.AlignRight)
         self.readTimeOutput.setReadOnly(True)
         self.readTimeOutput.setFixedWidth(120)
         self.writeTimeLabel = QLabel("Write Session Time")
-        self.writeTimeOutput = QLineEdit() 
+        self.writeTimeOutput = QLineEdit(text="0:00:00", alignment=QtCore.Qt.AlignRight) 
         self.writeTimeOutput.setReadOnly(True)
         self.writeTimeOutput.setFixedWidth(120)
         self.writeFileNameLabel = QLabel("Write File Name")

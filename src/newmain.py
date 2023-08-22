@@ -10,7 +10,7 @@ start_time = time.time()
 import numpy as np
 from pandas import read_excel
 
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QDialog, QWidget
 
 from gui import Window
 import newplotting as plotting
@@ -27,12 +27,10 @@ MAX_READ_LENGTH = PACKET_LENGTH * 5000
 SYNC = [64, 40, 107, 254]
 
 
-endianness = np.array([3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12, 19, 18, 17, 16,
-                       23, 22, 21, 20, 27, 26, 25, 24, 31, 30, 29, 28, 35, 34, 33, 32, 39, 38, 37, 36,
-                       43, 42, 41, 40, 47, 46, 45, 44, 51, 50, 49, 48, 55, 54, 53, 52, 59, 58, 57, 56,
-                       63, 62, 61, 60, 67, 66, 65, 64, 71, 70, 69, 68, 75, 74, 73, 72, 79, 78, 77, 76])
-
-
+e = np.arange(MINFRAME_LEN)
+for i in range(0, MINFRAME_LEN, 4):
+    e[i:i+4] = e[i:i+4][::-1]
+print(e)
 sync_arr = np.array(SYNC)
 target_sync = np.dot(sync_arr, sync_arr)
 def find_SYNC(seq):
@@ -45,7 +43,7 @@ def find_SYNC(seq):
 
 def parse():
     win.setupGroupBox.setEnabled(False)
-    plotting.plot.show()
+    win.time_start()
     mode = win.read_mode
     read_file = None
     write_file = None
@@ -80,7 +78,7 @@ def parse():
         inds = inds[:-1][(np.diff(inds) == PACKET_LENGTH)]
         inds[:-1] = inds[:-1][(np.diff(raw_data[inds + 6]) != 0)]
 
-        minframes = raw_data[inds[:, None] + endianness].astype(int)
+        minframes = raw_data[inds[:, None] + e].astype(int)
 
         oddframe = minframes[np.where(minframes[:, 57] & 3 == 1)]
         evenframe = minframes[np.where(minframes[:, 57] & 3 == 2)]
@@ -96,8 +94,9 @@ if __name__ == '__main__':
     win = Window()
     win.readStart.clicked.connect(parse)
 
-    plotting.plot = plotting.Plotting(win)
-    win.mainGrid.addWidget(plotting.plot, 3, 3)
-    plotting.plot.hide()
+    plot = plotting.Plotting()
+    # win.mainGrid.addWidget(plotting.plot, 3, 3)
+    #plotting.plot.hide()
     win.show()
     sys.exit(app.exec_())
+ 
