@@ -1,13 +1,12 @@
 
 make newplotting not oop
 
-create a file search system
 
 
 
 change to 32 int???
 
-
+Change from camelcase to snake case
 
 
 
@@ -19,6 +18,7 @@ change to 32 int???
 
 
 #### Completed ####
+create a file search system
 read/write session times
 add writing to file functionality
 dynamic endianness

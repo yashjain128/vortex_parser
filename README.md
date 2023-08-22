@@ -9,7 +9,6 @@ The program is split into a files: `main.py` , `gui.py` , `plotting.py`
 To simulate a local connection: `sendUDP.py`  
 
 All of the test data files are in the lib folder
-
 ## Setup
 Install Python
 

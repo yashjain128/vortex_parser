@@ -1,8 +1,9 @@
 import sys, os
+from os.path import dirname, abspath, basename
 from datetime import datetime, timedelta
 
 from PyQt5 import QtCore
-from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox,
+from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox, QComboBox,
                              QMenu, QPushButton, QRadioButton, QWidget, QLabel, QLineEdit, QFileDialog)
 import newplotting as plotting
 
@@ -31,18 +32,29 @@ class Window(QWidget):
     def choose_recording(self):
         self.read_file = self.getFile("Pick a udp recording", "", "UDP Files (*.udp; *.bin);;All files (*)")
         if self.read_file is not None:
-            self.pickReadFileNameLabel.setText(os.path.basename(self.read_file))
+            self.pickReadFileNameLabel.setText(basename(self.read_file))
 
     def choose_map(self):
         file_path = self.getFile("Pick a map file", "", "Mat Map Files (*.mat);;All files (*)") 
         if file_path is not None:
-            self.pickMapNameLabel.setText(os.path.basename(file_path))
+            self.pickMapNameLabel.setText(basename(file_path))
         plotting.plot 
-    def choose_instr(self):
+
+    def pick_instr(self, n):
+        file_path = self.found_instr_files[n]
+        self.change_instr(file_path)
+
+    def find_instr(self):
         file_path = self.getFile("Pick an instrument file", "", "Excel Files (*.xlsx);;All files (*)")
         if file_path is not None:
-            self.pickInstrNameLabel.setText(os.path.basename(file_path))
-            plotting.plot.start_excel(file_path)
+            self.pickInstrNameEdit.setText(file_path)
+            self.change_instr(file_path)
+        
+    def change_instr(self, file_path):
+        if self.instr_file != file_path:
+            self.instr_file = file_path
+            print(self.instr_file)
+
 
     def toggle_to_udp(self):
         self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}") 
@@ -82,6 +94,7 @@ class Window(QWidget):
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.time_run)
 
+        
         self.read_mode = 0
         self.read_file = None
         self.read_time = 0
@@ -89,6 +102,16 @@ class Window(QWidget):
         self.do_write = False
         self.write_file = None
         self.write_time = 0
+
+        self.instr_file = None
+        self.search_dir = dirname(dirname(abspath(__file__)))+ "\\lib\\"
+        self.found_instr_files = []
+        
+        for file in os.listdir(self.search_dir):
+             if file.endswith(".xlsx"):
+                self.found_instr_files.append(self.search_dir + file)
+        self.instr_file = self.found_instr_files[0]
+
         # Top ------------------------------
         self.setupGroupBox = QGroupBox("Setup")
         self.topLayout = QGridLayout()
@@ -96,12 +119,18 @@ class Window(QWidget):
         self.pickInstrLabel = QLabel("Instrument Format (.xlsx)")
         self.pickInstrButton = QPushButton("...")
         self.pickInstrButton.setFixedWidth(24)
-        self.pickInstrButton.clicked.connect(self.choose_instr)
-        self.pickInstrNameLabel = QLabel("Pick a file")
-        self.pickInstrNameLabel.setStyleSheet("background-color: white")
+        self.pickInstrButton.clicked.connect(self.find_instr)
+        self.pickInstrNameEdit = QLineEdit("Pick a file")
+        self.pickInstrNameEdit.setReadOnly(True)
+        self.pickInstrCombo = QComboBox()
+        self.pickInstrCombo.addItems(map(basename, self.found_instr_files))
+        self.pickInstrCombo.currentIndexChanged.connect(self.pick_instr)
+        self.pickInstrCombo.setLineEdit(self.pickInstrNameEdit)
+        # self.pickInstrNameEdit.setStyleSheet("background-color: white")
+
 
         self.topLayout.addWidget(self.pickInstrLabel, 0, 0)
-        self.topLayout.addWidget(self.pickInstrNameLabel, 0, 1)
+        self.topLayout.addWidget(self.pickInstrCombo, 0, 1)
         self.topLayout.addWidget(self.pickInstrButton, 0, 2)
 
         self.pickMapLabel = QLabel("Map File (.mat)")
