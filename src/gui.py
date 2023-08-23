@@ -1,12 +1,13 @@
-import ctypes
 import sys, os
 from os.path import dirname, abspath, basename
+
 from datetime import datetime, timedelta
 
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox, QComboBox,
                              QMenu, QPushButton, QRadioButton, QWidget, QLabel, QLineEdit, QFileDialog)
-import newplotting as plotting
+
+from newplotting import Plotting
 
 class QSelectedGroupBox(QGroupBox): 
     clicked = QtCore.pyqtSignal(str, object)     
@@ -39,8 +40,7 @@ class Window(QWidget):
         file_path = self.getFile("Pick a map file", "", "Mat Map Files (*.mat);;All files (*)") 
         if file_path is not None:
             self.pickMapNameLabel.setText(basename(file_path))
-        plotting.plot 
-
+        self.plot_win.start_excel()
     def pick_instr(self, n):
         file_path = self.found_instr_files[n]
         self.change_instr(file_path)
@@ -93,8 +93,7 @@ class Window(QWidget):
         super(Window, self).__init__(parent)
         self.setWindowIcon(QtGui.QIcon('icon.png'))
         self.setWindowTitle("SAIL parser")
-        # add to taskbar for windows
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u'sailparser.1') 
+
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.time_run)
         
@@ -109,7 +108,8 @@ class Window(QWidget):
         self.instr_file = None
         self.search_dir = dirname(dirname(abspath(__file__)))+ "\\lib\\"
         self.found_instr_files = []
-        
+
+        self.plot_win = Plotting() 
         for file in os.listdir(self.search_dir):
              if file.endswith(".xlsx"):
                 self.found_instr_files.append(self.search_dir + file)

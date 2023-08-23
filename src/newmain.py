@@ -3,7 +3,8 @@ This script is for running
 
 '''
 import time
-import os, sys
+import os, sys, platform
+import ctypes
 import socket
 start_time = time.time()
 
@@ -15,8 +16,9 @@ from PyQt5.QtWidgets import QApplication, QDialog, QWidget
 from gui import Window
 import newplotting as plotting
 # True to turn on debugging
+print(platform.system)
+ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u'hi')
 dbg = True
-
 if dbg:
     print(f"[Debug] {time.time()-start_time} s")
     
@@ -90,13 +92,10 @@ if dbg:
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u'hi')
     win = Window()
     win.readStart.clicked.connect(parse)
 
-    plot = plotting.Plotting()
-    # win.mainGrid.addWidget(plotting.plot, 3, 3)
-    #plotting.plot.hide()
     win.show()
     sys.exit(app.exec_())
  
