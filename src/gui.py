@@ -1,8 +1,9 @@
+import ctypes
 import sys, os
 from os.path import dirname, abspath, basename
 from datetime import datetime, timedelta
 
-from PyQt5 import QtCore
+from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox, QComboBox,
                              QMenu, QPushButton, QRadioButton, QWidget, QLabel, QLineEdit, QFileDialog)
 import newplotting as plotting
@@ -90,10 +91,12 @@ class Window(QWidget):
 
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
-
+        self.setWindowIcon(QtGui.QIcon('icon.png'))
+        self.setWindowTitle("SAIL parser")
+        # add to taskbar for windows
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u'sailparser.1') 
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.time_run)
-
         
         self.read_mode = 0
         self.read_file = None
@@ -139,7 +142,6 @@ class Window(QWidget):
         self.pickMapButton.setFixedWidth(24)
         self.pickMapNameLabel = QLabel("Pick a file")
         self.pickMapNameLabel.setStyleSheet("background-color: white")
-
 
 
         self.topLayout.addWidget(self.pickMapLabel, 1, 0)
