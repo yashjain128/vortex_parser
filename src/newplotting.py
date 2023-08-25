@@ -44,7 +44,6 @@ class Plotting(QWidget):
         for ind, row in graphformat.iterrows():
             self.init_graph(ind, *row)
         self.fig.canvas.draw()
-
         
         self.show()
         
