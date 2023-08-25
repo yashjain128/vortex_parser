@@ -40,7 +40,7 @@ class Window(QWidget):
         file_path = self.getFile("Pick a map file", "", "Mat Map Files (*.mat);;All files (*)") 
         if file_path is not None:
             self.pickMapNameLabel.setText(basename(file_path))
-        self.plot_win.start_excel()
+    
     def pick_instr(self, n):
         file_path = self.found_instr_files[n]
         self.change_instr(file_path)
@@ -77,26 +77,56 @@ class Window(QWidget):
             self.writeStart.setStyleSheet("background-color: #29d97e")
             self.do_write=True
             self.writeFileNameEdit.setEnabled(False) 
-            self.write_file = open("../recordings/"+self.writeFileNameEdit.text()+".udp", "ab")
+        self.write_file = open(self.dir+"/recordings/"+self.writeFileNameEdit.text()+".udp", "ab")
     
-    def time_start(self):
-        self.timer.start(1000)
     
     def time_run(self):
         self.read_time+=1
         self.readTimeOutput.setText(str(timedelta(seconds=self.read_time)))
         if self.do_write:
             self.write_time+=1
-            self.writeTimeOutput.setText(self.write_time.elapsed())
+            self.writeTimeOutput.setText(str(timedelta(seconds=self.write_time)))
+    def reset_read_time(self):
+        self.read_time = 0
+        self.readTimeOutput.setText(str(timedelta(0)))
 
-    def __init__(self, parent=None):
+    def reset_write_time(self):
+        self.write_time = 0
+        self.writeTimeOutput.setText(str(timedelta(0)))
+    def toggle_parse(self):
+        if not self.readStart.isChecked():
+            print("start")
+            if self.read_mode==0 and self.read_file==None:
+                print("Please select a read file")
+                self.readStart.setChecked(True)
+                return
+            elif self.read_mode==1:
+                print("not implemented yet")
+                self.readStart.setChecked(True)
+                return
+
+            print("starting")            
+            self.timer.start(1000)
+            self.setupGroupBox.setEnabled(False)
+            
+            self.parse_func()
+
+        else:
+            print("stopped")
+            self.timer.stop()
+            self.setupGroupBox.setEnabled(True)
+
+    def __init__(self, parse_func, parent=None):
         super(Window, self).__init__(parent)
         self.setWindowIcon(QtGui.QIcon('icon.png'))
         self.setWindowTitle("SAIL parser")
 
+        self.parse_func = parse_func
+
+        self.dir = dirname(dirname(abspath(__file__)))
+
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.time_run)
-        
         self.read_mode = 0
         self.read_file = None
         self.read_time = 0
@@ -106,7 +136,7 @@ class Window(QWidget):
         self.write_time = 0
 
         self.instr_file = None
-        self.search_dir = dirname(dirname(abspath(__file__)))+ "\\lib\\"
+        self.search_dir = self.dir + "\\lib\\"
         self.found_instr_files = []
 
         self.plot_win = Plotting() 
@@ -211,11 +241,14 @@ class Window(QWidget):
 
         # Left Box
         self.liveControlGroupBox = QGroupBox("Live Control")
+
         self.readStartLabel = QLabel("Collect Data")
-        self.readStart = QPushButton("Start")
+        self.readStart = QPushButton(u"Start")
         self.readStart.setFixedWidth(40)
         self.readStart.setStyleSheet("background-color: #e34040")
         self.readStart.setCheckable(True)
+
+        self.readStart.pressed.connect(self.toggle_parse)
         # 29d97e
 
         self.writeStartLabel = QLabel("Write to file ")
@@ -241,25 +274,36 @@ class Window(QWidget):
 
         # Right Box
         self.readTimeLabel = QLabel("Read Session Time")
+        self.readTimeReset = QPushButton(u"\u27F3")
+        self.readTimeReset.setFlat(True)
+        self.readTimeReset.setFixedWidth(20)
+        self.readTimeReset.clicked.connect(self.reset_read_time)
         self.readTimeOutput = QLineEdit(text="0:00:00", alignment=QtCore.Qt.AlignRight)
         self.readTimeOutput.setReadOnly(True)
-        self.readTimeOutput.setFixedWidth(120)
+        self.readTimeOutput.setFixedWidth(100)
         self.writeTimeLabel = QLabel("Write Session Time")
+        self.writeTimeReset= QPushButton(u"\u27F3")
+        self.writeTimeReset.setFlat(True)
+        self.writeTimeReset.setFixedWidth(20)
+        self.writeTimeReset.clicked.connect(self.reset_write_time)
         self.writeTimeOutput = QLineEdit(text="0:00:00", alignment=QtCore.Qt.AlignRight) 
         self.writeTimeOutput.setReadOnly(True)
-        self.writeTimeOutput.setFixedWidth(120)
+        self.writeTimeOutput.setFixedWidth(100)
         self.writeFileNameLabel = QLabel("Write File Name")
         self.writeFileNameEdit = QLineEdit("Recording"+datetime.today().strftime('%Y-%m-%d'))
-        self.writeFileNameEdit.setFixedWidth(120)
+        self.writeFileNameEdit.setFixedWidth(122)
 
         self.rightBox = QGridLayout()
+        self.rightBox.setHorizontalSpacing(1)
         self.rightBox.setRowStretch(0, 1)
-        self.rightBox.addWidget(self.readTimeLabel, 0, 0)
-        self.rightBox.addWidget(self.readTimeOutput, 0, 1)
-        self.rightBox.addWidget(self.writeTimeLabel, 1, 0)
-        self.rightBox.addWidget(self.writeTimeOutput, 1, 1)
+        self.rightBox.addWidget(self.readTimeLabel, 0, 0, 1, 1)
+        self.rightBox.addWidget(self.readTimeReset, 0, 1, 1, 1)
+        self.rightBox.addWidget(self.readTimeOutput, 0, 2, 1, 2)
+        self.rightBox.addWidget(self.writeTimeLabel, 1, 0, 1, 1)
+        self.rightBox.addWidget(self.writeTimeReset, 1, 1, 1, 1)
+        self.rightBox.addWidget(self.writeTimeOutput, 1, 2, 1, 2)
         self.rightBox.addWidget(self.writeFileNameLabel, 2, 0)
-        self.rightBox.addWidget(self.writeFileNameEdit, 2, 1)
+        self.rightBox.addWidget(self.writeFileNameEdit, 2, 1, 1, 3)
 
         self.liveControlBox = QGridLayout()
         self.liveControlBox.setColumnStretch(0, 1)
@@ -277,3 +321,10 @@ class Window(QWidget):
         self.mainGrid.addWidget(self.statusLabel, 2, 0)
 
         self.setLayout(self.mainGrid)
+
+
+
+#    *
+#   **
+#  ***
+# ****

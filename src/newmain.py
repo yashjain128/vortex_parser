@@ -44,8 +44,6 @@ def find_SYNC(seq):
 
 
 def parse():
-    win.setupGroupBox.setEnabled(False)
-    win.time_start()
     mode = win.read_mode
     read_file = None
     write_file = None
@@ -93,9 +91,7 @@ if dbg:
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u'hi')
-    win = Window()
-    win.readStart.clicked.connect(parse)
-
+    win = Window(parse)
     win.show()
     sys.exit(app.exec_())
  
