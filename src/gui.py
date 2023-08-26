@@ -38,11 +38,13 @@ class Window(QWidget):
 
     def choose_map(self):
         file_path = self.getFile("Pick a map file", "", "Mat Map Files (*.mat);;All files (*)") 
-        if file_path is not None:
+        if file_path is not None:   
             self.pickMapNameLabel.setText(basename(file_path))
     
     def pick_instr(self, n):
-        file_path = self.found_instr_files[n]
+        if n==0:
+            self.instr_file = None
+        file_path = self.found_instr_files[n-1]
         self.change_instr(file_path)
 
     def find_instr(self):
@@ -54,6 +56,7 @@ class Window(QWidget):
     def change_instr(self, file_path):
         if self.instr_file != file_path:
             self.instr_file = file_path
+            self.plot_win.start_excel(self.instr_file)
             print(self.instr_file)
 
 
@@ -156,10 +159,11 @@ class Window(QWidget):
         self.pickInstrNameEdit = QLineEdit("Pick a file")
         self.pickInstrNameEdit.setReadOnly(True)
         self.pickInstrCombo = QComboBox()
+        self.pickInstrCombo.addItem("-- select file --")
         self.pickInstrCombo.addItems(map(basename, self.found_instr_files))
         self.pickInstrCombo.currentIndexChanged.connect(self.pick_instr)
         self.pickInstrCombo.setLineEdit(self.pickInstrNameEdit)
-        # self.pickInstrNameEdit.setStyleSheet("background-color: white")
+        self.pickInstrNameEdit.setStyleSheet("background-color: white")
 
 
         self.topLayout.addWidget(self.pickInstrLabel, 0, 0)

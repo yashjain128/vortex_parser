@@ -9,7 +9,6 @@ import socket
 start_time = time.time()
 
 import numpy as np
-from pandas import read_excel
 
 from PyQt5.QtWidgets import QApplication, QDialog, QWidget
 

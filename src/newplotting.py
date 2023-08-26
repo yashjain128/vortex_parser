@@ -7,7 +7,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas, NavigationToolbar2QT as NavigationToolbar
 
-from pandas import read_excel
+import openpyxl
 
 from scipy.io import loadmat
 
@@ -20,12 +20,19 @@ class Plotting(QWidget):
 
         self.layout = QGridLayout()
 
-        self.fig = plt.figure()
-        self.gpsfig, self.pltfig = self.fig.subfigures(1, 2, squeeze=True)
-
+        self.fig = plt.figure(figsize=(16, 8))
+        self.gpsfig, self.pltfig = self.fig.subfigures(1, 2, width_ratios=[1, 3])
         self.gpsax2d = self.gpsfig.add_subplot(2, 1, 1)
-        self.gpsax3d = self.gpsfig.add_subplot(2, 1, 2)
-        self.pltaxes = []
+        self.gpsax3d = self.gpsfig.add_subplot(2, 1, 2, projection='3d')
+
+        self.gpsax2d.set_title("GPS position", fontsize=10, fontweight='bold')
+        self.gpsax2d.set_xlabel(xlabel="Longitude", fontsize=8)
+        self.gpsax2d.set_ylabel(ylabel="Latitude", fontsize=8)
+        self.gpsax2d.tick_params(axis='both', which='major', labelsize=6)
+        self.gpsax2d.ticklabel_format(axis='both', scilimits=(0, 0))
+        self.gpsax2d.yaxis.get_offset_text().set_fontsize(6)
+        self.gpsax2d.xaxis.get_offset_text().set_fontsize(6)
+        self.pltaxes = [] 
 
         # Convert matplotlib fig and toolbar into pyqt widgets
         self.canvas = FigureCanvas(self.fig)
@@ -34,17 +41,29 @@ class Plotting(QWidget):
         self.layout.addWidget(self.toolbar, 0, 1)
         self.layout.addWidget(self.canvas, 1, 1)
 
+
+        self.gpsfig.subplots_adjust(left=0.2, bottom=0.08, right=0.9, top=0.95, hspace=0.25, wspace=0.25)
         self.setLayout(self.layout) 
 
     def start_excel(self, file_path):
-        formatloc = read_excel(file_path, 'Format', skiprows=0, nrows=3, usecols="C:D", names=[0, 1])
-        self.pltfig.clf()
-        self.pltaxes = self.pltfig.subplots(2, (formatloc[1][0]+1)//2).flatten()
-        graphformat = read_excel(file_path, 'Format', skiprows=formatloc[0][0] - 1, nrows=formatloc[1][0], usecols="C:H", names=range(6))
-        for ind, row in graphformat.iterrows():
-            self.init_graph(ind, *row)
+        wb = openpyxl.load_workbook(file_path, data_only=True)  
+        sh = wb.active
+
+        getval = lambda c: str(sh[c].value)
+    
+        self.pltaxes = self.pltfig.subplots(2, (int(getval('D3'))-int(getval('C3'))+2)//2).flatten()
+        for ind, row in enumerate(sh[ 'C'+getval('C3') : 'H'+getval('D3')]):
+            print(*[i.value for i in row])
+            self.init_graph(ind, *[i.value for i in row])
+
+        for row in sh[ 'C'+getval('C4') : 'O'+getval('D4')]: 
+            temp = [i.value for i in row]
+
+        for row in sh[ 'C'+getval('C5') : 'U'+getval('D5')]:
+            temp = [i.value for i in row]
+        self.pltfig.subplots_adjust(left=0.03, bottom=0.08, right=0.97, top=0.95, hspace=0.25, wspace=0.25)
         self.fig.canvas.draw()
-        
+        #self.fig.tight_layout()
         self.show()
         
 
