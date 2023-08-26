@@ -1,25 +1,19 @@
-import os, sys
-from os.path import dirname, abspath
-from PyQt5.QtWidgets import QComboBox, QApplication, QWidget, QGridLayout, QLineEdit
-from PyQt5.QtGui import QIcon
+import openpyxl  
 
-app = QApplication(sys.argv)
-w = QWidget()
+def func(*args):
+    print(*args)
 
-search_dir = dirname(dirname(dirname(abspath(__file__))))+"\lib"
-combobox = QComboBox()
-for file in os.listdir(search_dir):
-    if file.endswith(".xlsx"):
-        combobox.addItem(file)
 
-edit = QLineEdit()
-edit.setReadOnly(True)
-combobox.setLineEdit(edit)
-combobox.setCurrentText("pick a file")
-layout = QGridLayout()
-layout.addWidget(combobox, 0, 0)
+wb = openpyxl.load_workbook('lib/SAILFormat.xlsx', data_only=True)  
+sh = wb.active
 
-w.setLayout(layout)
+getval = lambda c: str(sh[c].value)
 
-w.show()
-sys.exit(app.exec_())
+for row in sh[ 'C'+getval('C3') : 'H'+getval('D3')]: 
+    func(*[i.value for i in row])
+
+for row in sh[ 'C'+getval('C4') : 'O'+getval('D4')]: 
+    func(*[i.value for i in row])
+
+for row in sh[ 'C'+getval('C5') : 'U'+getval('D5')]: 
+    func(*[i.value for i in row])
