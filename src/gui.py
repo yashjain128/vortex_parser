@@ -40,10 +40,12 @@ class Window(QWidget):
         file_path = self.getFile("Pick a map file", "", "Mat Map Files (*.mat);;All files (*)") 
         if file_path is not None:   
             self.pickMapNameLabel.setText(basename(file_path))
+            self.plot_win.add_map(file_path)
     
     def pick_instr(self, n):
         if n==0:
             self.instr_file = None
+            return
         file_path = self.found_instr_files[n-1]
         self.change_instr(file_path)
 
@@ -57,8 +59,15 @@ class Window(QWidget):
         if self.instr_file != file_path:
             self.instr_file = file_path
             self.plot_win.start_excel(self.instr_file)
-            print(self.instr_file)
+            self.pickInstrCombo.setEnabled(False)
+            self.pickInstrButton.setEnabled(False)
+            print("Changed")
 
+    def reset_instr(self, close_event):
+        self.pickInstrCombo.setEnabled(True)
+        self.pickInstrButton.setEnabled(True)
+        self.instr_file = None
+        self.pickInstrCombo.setCurrentIndex(0)
 
     def toggle_to_udp(self):
         self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}") 
@@ -108,9 +117,11 @@ class Window(QWidget):
                 self.readStart.setChecked(True)
                 return
 
-            print("starting")            
+            print("starting")
             self.timer.start(1000)
             self.setupGroupBox.setEnabled(False)
+            self.pickInstrCombo.setCurrentIndex(0)
+            self.plot_win.start()
             
             self.parse_func()
 
@@ -142,7 +153,7 @@ class Window(QWidget):
         self.search_dir = self.dir + "\\lib\\"
         self.found_instr_files = []
 
-        self.plot_win = Plotting() 
+        self.plot_win = Plotting(self.reset_instr) 
         for file in os.listdir(self.search_dir):
              if file.endswith(".xlsx"):
                 self.found_instr_files.append(self.search_dir + file)
@@ -150,8 +161,8 @@ class Window(QWidget):
 
         # Top ------------------------------
         self.setupGroupBox = QGroupBox("Setup")
-        self.topLayout = QGridLayout()
 
+        self.pickInstrLayout = QGridLayout()
         self.pickInstrLabel = QLabel("Instrument Format (.xlsx)")
         self.pickInstrButton = QPushButton("...")
         self.pickInstrButton.setFixedWidth(24)
@@ -166,10 +177,11 @@ class Window(QWidget):
         self.pickInstrNameEdit.setStyleSheet("background-color: white")
 
 
-        self.topLayout.addWidget(self.pickInstrLabel, 0, 0)
-        self.topLayout.addWidget(self.pickInstrCombo, 0, 1)
-        self.topLayout.addWidget(self.pickInstrButton, 0, 2)
+        self.pickInstrLayout.addWidget(self.pickInstrLabel, 0, 0)
+        self.pickInstrLayout.addWidget(self.pickInstrCombo, 0, 1)
+        self.pickInstrLayout.addWidget(self.pickInstrButton, 0, 2)
 
+        self.pickMapLayout = QGridLayout()
         self.pickMapLabel = QLabel("Map File (.mat)")
         self.pickMapButton = QPushButton("...")
         self.pickMapButton.clicked.connect(self.choose_map)
@@ -177,10 +189,9 @@ class Window(QWidget):
         self.pickMapNameLabel = QLabel("Pick a file")
         self.pickMapNameLabel.setStyleSheet("background-color: white")
 
-
-        self.topLayout.addWidget(self.pickMapLabel, 1, 0)
-        self.topLayout.addWidget(self.pickMapNameLabel, 1, 1)
-        self.topLayout.addWidget(self.pickMapButton, 1, 2)
+        self.pickMapLayout.addWidget(self.pickMapLabel, 1, 0)
+        self.pickMapLayout.addWidget(self.pickMapNameLabel, 1, 1)
+        self.pickMapLayout.addWidget(self.pickMapButton, 1, 2)
 
         self.toggleReadUDPLabel = QLabel("toggle Read File / UDP")
 
@@ -237,10 +248,11 @@ class Window(QWidget):
         self.setupBox = QGridLayout()
         self.setupBox.setColumnStretch(0, 1)
         self.setupBox.setColumnStretch(1, 1)
-        self.setupBox.addLayout(self.topLayout, 0, 0, 1, 2)
-        self.setupBox.addWidget(self.readFileBox, 1, 0, 2, 1)
-        self.setupBox.addWidget(self.liveUDPBox, 1, 1, 2, 1)
-        self.setupBox.addLayout(self.plotSettingsBox, 3, 0, 1, 2)
+        self.setupBox.addLayout(self.pickInstrLayout, 0, 0, 1, 2)
+        self.setupBox.addLayout(self.pickMapLayout, 1, 0, 1, 2)
+        self.setupBox.addWidget(self.readFileBox, 2, 0, 2, 1)
+        self.setupBox.addWidget(self.liveUDPBox, 2, 1, 2, 1)
+        self.setupBox.addLayout(self.plotSettingsBox, 4, 0, 1, 2)
         self.setupGroupBox.setLayout(self.setupBox)
 
         # Left Box
