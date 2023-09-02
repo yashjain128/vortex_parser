@@ -7,13 +7,22 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 import openpyxl
 
+from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox, QComboBox,
+                             QMenu, QPushButton, QRadioButton, QWidget, QLabel, QLineEdit, QFileDialog)
+
 from scipy.io import loadmat
 
 class Plotting():
-    def __init__(self, on_close):
-        self.on_close = on_close
+    def __init__(self, win):
+        self.win = win
         self.fig = None
         self.gpsfig, self.pltfig = None, None
+        self.hkNames = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3", "VBat Mon", "Dig. Temp"]
+    def on_close(self, close_msg):
+        self.win.pickInstrCombo.setEnabled(True)
+        self.win.pickInstrButton.setEnabled(True)
+        self.win.pickInstrCombo.setCurrentIndex(0)
+        self.win.instr_file = None
     def start_excel(self, file_path):
         self.fig = plt.figure(figsize=(16, 8))
         self.fig.canvas.mpl_connect('close_event', self.on_close)
@@ -31,42 +40,31 @@ class Plotting():
         self.gpsax2d.xaxis.get_offset_text().set_fontsize(6)
         self.pltaxes = []
 
-
         self.gpsax3d.yaxis.get_offset_text().set_fontsize(6)
         
         self.gpsax3d.xaxis.get_offset_text().set_fontsize(6)
         
-        wb = openpyxl.load_workbook(file_path, data_only=True)  
-        sh = wb.active
+        workbook = openpyxl.load_workbook(file_path, data_only=True)  
+        sheet = workbook.active
 
-        getval = lambda c: str(sh[c].value)
+        getval = lambda c: str(sheet[c].value)
     
         self.pltaxes = self.pltfig.subplots(2, (int(getval('D3'))-int(getval('C3'))+2)//2).flatten()
-        for ind, row in enumerate(sh[ 'C'+getval('C3') : 'H'+getval('D3')]):
+        for ind, row in enumerate(sheet[ 'C'+getval('C3') : 'H'+getval('D3')]):
             self.init_graph(ind, *[i.value for i in row])
 
-        for row in sh[ 'C'+getval('C4') : 'O'+getval('D4')]: 
+        for row in sheet[ 'C'+getval('C4') : 'O'+getval('D4')]: 
             temp = [i.value for i in row]
 
-        for row in sh[ 'C'+getval('C5') : 'U'+getval('D5')]:
-            temp = [i.value for i in row]
+        for row in sheet[ 'C'+getval('C5') : 'V'+getval('D5')]:
+            self.init_housekeeping(*[i.value for i in row])
 
         self.gpsfig.subplots_adjust(left=0.2, bottom=0.08, right=0.9, top=0.95, hspace=0.25, wspace=0.25)
         self.pltfig.subplots_adjust(left=0.03, bottom=0.08, right=0.97, top=0.95, hspace=0.25, wspace=0.25)
         self.fig.canvas.draw()
 
         plt.show()
-
-        ## instrumentformat = read_excel(file_path, 'Format', skiprows=formatloc[0][1] - 1, nrows=formatloc[1][1], usecols="C:O", names=range(0, 13))
-
-        ## for index, row in instrumentformat.iterrows():
-        ##     g, color, protocol, signed, *bytedata = row.tolist()
-        ##     plotting.graphs[g].addline(color, protocol, signed, bytedata)
-
-        ## housekeepingformat = read_excel(file_path, 'Format', skiprows=formatloc[0][2] - 1, nrows=formatloc[1][2], usecols="C:J", names=range(0, 8))
-        ## for index, row in housekeepingformat.iterrows():
-        ##     plotting.HouseKeepingData(*row)
-
+    
     def add_map(self, map_file): 
         gpsmap = loadmat(map_file)
         latlim = gpsmap['latlim'][0]
@@ -100,4 +98,29 @@ class Plotting():
         ax.yaxis.get_offset_text().set_fontsize(6)
         ax.xaxis.get_offset_text().set_fontsize(6)
         lines = []
+    
+    def init_housekeeping(self, title, protocol, boardID, length, rate, numpoints, nbyte, nbitmask, nbitshift, *ttable):
+        groupBox = QGroupBox(title)
+        hkLayout = QGridLayout()
+        hkValues = []
+        for ind, do_hk in enumerate(ttable):
+            hkLabel = QLabel(self.hkNames[ind])
+            hkValue = QLineEdit()
+            if not do_hk:
+                hkLabel.setEnabled(False)
+                hkValue.setEnabled(False)
+            
+            hkValue.setFixedWidth(50)
+            hkValue.setReadOnly(True)
+            
+            hkLayout.addWidget(hkLabel, ind, 0)
+            hkLayout.addWidget(hkValue, ind, 1)
+            
+            hkValues.append(hkValues)
+
+        groupBox.setLayout(hkLayout)
+
+        self.win.hkLayout.addWidget(groupBox)
+    def start(self):
+        print("Start not implemetntes")
 

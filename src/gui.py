@@ -4,7 +4,7 @@ from os.path import dirname, abspath, basename
 from datetime import datetime, timedelta
 
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox, QComboBox,
+from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox, QComboBox, QHBoxLayout,
                              QMenu, QPushButton, QRadioButton, QWidget, QLabel, QLineEdit, QFileDialog)
 
 from newplotting import Plotting
@@ -62,12 +62,6 @@ class Window(QWidget):
             self.pickInstrCombo.setEnabled(False)
             self.pickInstrButton.setEnabled(False)
             print("Changed")
-
-    def reset_instr(self, close_event):
-        self.pickInstrCombo.setEnabled(True)
-        self.pickInstrButton.setEnabled(True)
-        self.instr_file = None
-        self.pickInstrCombo.setCurrentIndex(0)
 
     def toggle_to_udp(self):
         self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}") 
@@ -129,7 +123,8 @@ class Window(QWidget):
             print("stopped")
             self.timer.stop()
             self.setupGroupBox.setEnabled(True)
-
+    def closeEvent(self, close_msg):
+        pass
     def __init__(self, parse_func, parent=None):
         super(Window, self).__init__(parent)
         self.setWindowIcon(QtGui.QIcon('icon.png'))
@@ -153,7 +148,7 @@ class Window(QWidget):
         self.search_dir = self.dir + "\\lib\\"
         self.found_instr_files = []
 
-        self.plot_win = Plotting(self.reset_instr) 
+        self.plot_win = Plotting(self) 
         for file in os.listdir(self.search_dir):
              if file.endswith(".xlsx"):
                 self.found_instr_files.append(self.search_dir + file)
@@ -232,9 +227,8 @@ class Window(QWidget):
         self.liveUDPBoxLayout.addWidget(self.portLabel, 1, 0)
         self.liveUDPBoxLayout.addWidget(self.portInputLine, 1, 1)
         self.liveUDPBox.setLayout(self.liveUDPBoxLayout)
+        
 
-        
-        
         self.plotHertzLabel = QLabel("Plot Update Rate (Hz)")
         self.plotHertzInput = QLineEdit(text="5")
         self.plotWidthLabel = QLabel("Plot Width (Seconds)")
@@ -330,13 +324,19 @@ class Window(QWidget):
         self.liveControlGroupBox.setLayout(self.liveControlBox)
         self.statusLabel = QLabel("Ready")
          
+        
+        self.hkLayout = QHBoxLayout()
+
         ### Add all 
         self.mainGrid = QGridLayout()        
         self.mainGrid.addWidget(self.setupGroupBox, 0, 0)
         self.mainGrid.addWidget(self.liveControlGroupBox, 1, 0)
         self.mainGrid.addWidget(self.statusLabel, 2, 0)
+        self.mainGrid.addLayout(self.hkLayout, 0, 1, 3, 3)
 
         self.setLayout(self.mainGrid)
+
+    
 
 
 

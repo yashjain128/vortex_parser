@@ -16,7 +16,7 @@ from gui import Window
 import newplotting as plotting
 # True to turn on debugging
 print(platform.system)
-ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u'hi')
+ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u'sailparser')
 dbg = True
 if dbg:
     print(f"[Debug] {time.time()-start_time} s")
