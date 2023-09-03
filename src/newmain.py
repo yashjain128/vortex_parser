@@ -31,7 +31,6 @@ SYNC = [64, 40, 107, 254]
 e = np.arange(MINFRAME_LEN)
 for i in range(0, MINFRAME_LEN, 4):
     e[i:i+4] = e[i:i+4][::-1]
-print(e)
 sync_arr = np.array(SYNC)
 target_sync = np.dot(sync_arr, sync_arr)
 def find_SYNC(seq):
@@ -56,7 +55,7 @@ def parse():
             print(f"[Debug] Connected\nIP: {udp_ip}\n Port: {port}")    
         sock = socket.socket(socket.AF_INET, # Internet
                      socket.SOCK_DGRAM) # UDP
-        sock.bind((udp_ip, port))
+        sock.bind((udp_ip, port)) 
 
 
     run = True

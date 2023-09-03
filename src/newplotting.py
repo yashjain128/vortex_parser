@@ -7,9 +7,8 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 import openpyxl
 
-from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox, QComboBox,
+from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox, QComboBox, QWidgetItem, QSpacerItem, QWIDGETSIZE_MAX,
                              QMenu, QPushButton, QRadioButton, QWidget, QLabel, QLineEdit, QFileDialog)
-
 from scipy.io import loadmat
 
 class Plotting():
@@ -18,11 +17,58 @@ class Plotting():
         self.fig = None
         self.gpsfig, self.pltfig = None, None
         self.hkNames = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3", "VBat Mon", "Dig. Temp"]
+        self.gpsNames = ["Longitude (deg)", "Latitude (deg)", "Altitude (km)", "vEast (m/s)", "vNorth (m/s)", "vUp (m/s)", "Horz. Speed (m/s)", "Num Sats"]
+
+
+        gpsGroupBox = QGroupBox("GPS")
+        gpsLayout = QGridLayout()
+        hkValues = []
+        for ind, name in enumerate(self.gpsNames):
+            
+            gpsLabel = QLabel(name)
+            gpsValue = QLineEdit()
+
+            gpsValue.setFixedWidth(50)
+            gpsValue.setReadOnly(True)
+            
+            gpsLayout.addWidget(gpsLabel, ind, 0)
+            gpsLayout.addWidget(gpsValue, ind, 1)
+            
+        gpsGroupBox.setLayout(gpsLayout)
+
+        self.win.gpsLayout.addWidget(gpsGroupBox)
+
     def on_close(self, close_msg):
         self.win.pickInstrCombo.setEnabled(True)
         self.win.pickInstrButton.setEnabled(True)
         self.win.pickInstrCombo.setCurrentIndex(0)
         self.win.instr_file = None
+
+        self.clear_layout(self.win.hkLayout)
+        self.win.gpsWidget.hide()
+        self.win.hkWidget.hide()
+        
+
+    def clear_layout(self, layout):    
+        for i in reversed(range(layout.count())):
+            item = layout.itemAt(i)
+
+            if isinstance(item, QWidgetItem):
+                print("widget" + str(item))
+                item.widget().close()
+
+            elif isinstance(item, QSpacerItem):
+                print("spacer " + str(item))
+            else:
+                print("layout " + str(item))
+                self.clear_layout(item.layout())
+
+            # remove the item from layout
+            layout.removeItem(item)
+                
+    def close(self):    
+        plt.close()
+
     def start_excel(self, file_path):
         self.fig = plt.figure(figsize=(16, 8))
         self.fig.canvas.mpl_connect('close_event', self.on_close)
@@ -41,7 +87,6 @@ class Plotting():
         self.pltaxes = []
 
         self.gpsax3d.yaxis.get_offset_text().set_fontsize(6)
-        
         self.gpsax3d.xaxis.get_offset_text().set_fontsize(6)
         
         workbook = openpyxl.load_workbook(file_path, data_only=True)  
@@ -59,12 +104,15 @@ class Plotting():
         for row in sheet[ 'C'+getval('C5') : 'V'+getval('D5')]:
             self.init_housekeeping(*[i.value for i in row])
 
+        self.win.gpsWidget.show()
+        self.win.hkWidget.show()
+
         self.gpsfig.subplots_adjust(left=0.2, bottom=0.08, right=0.9, top=0.95, hspace=0.25, wspace=0.25)
         self.pltfig.subplots_adjust(left=0.03, bottom=0.08, right=0.97, top=0.95, hspace=0.25, wspace=0.25)
-        self.fig.canvas.draw()
 
+        self.fig.canvas.draw()
         plt.show()
-    
+
     def add_map(self, map_file): 
         gpsmap = loadmat(map_file)
         latlim = gpsmap['latlim'][0]
@@ -121,6 +169,6 @@ class Plotting():
         groupBox.setLayout(hkLayout)
 
         self.win.hkLayout.addWidget(groupBox)
+    
     def start(self):
         print("Start not implemetntes")
-

@@ -4,7 +4,7 @@ from os.path import dirname, abspath, basename
 from datetime import datetime, timedelta
 
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox, QComboBox, QHBoxLayout,
+from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox, QComboBox, QHBoxLayout, QFrame,
                              QMenu, QPushButton, QRadioButton, QWidget, QLabel, QLineEdit, QFileDialog)
 
 from newplotting import Plotting
@@ -61,7 +61,6 @@ class Window(QWidget):
             self.plot_win.start_excel(self.instr_file)
             self.pickInstrCombo.setEnabled(False)
             self.pickInstrButton.setEnabled(False)
-            print("Changed")
 
     def toggle_to_udp(self):
         self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}") 
@@ -124,7 +123,7 @@ class Window(QWidget):
             self.timer.stop()
             self.setupGroupBox.setEnabled(True)
     def closeEvent(self, close_msg):
-        pass
+        self.plot_win.close()
     def __init__(self, parse_func, parent=None):
         super(Window, self).__init__(parent)
         self.setWindowIcon(QtGui.QIcon('icon.png'))
@@ -148,7 +147,6 @@ class Window(QWidget):
         self.search_dir = self.dir + "\\lib\\"
         self.found_instr_files = []
 
-        self.plot_win = Plotting(self) 
         for file in os.listdir(self.search_dir):
              if file.endswith(".xlsx"):
                 self.found_instr_files.append(self.search_dir + file)
@@ -324,23 +322,23 @@ class Window(QWidget):
         self.liveControlGroupBox.setLayout(self.liveControlBox)
         self.statusLabel = QLabel("Ready")
          
-        
+ 
         self.hkLayout = QHBoxLayout()
-
+        self.hkWidget = QFrame()
+        self.hkWidget.setLayout(self.hkLayout)
+        self.hkWidget.hide() 
+        self.gpsLayout = QHBoxLayout()
+        self.gpsWidget = QFrame()
+        self.gpsWidget.setLayout(self.gpsLayout)
+        self.gpsWidget.hide()
         ### Add all 
         self.mainGrid = QGridLayout()        
         self.mainGrid.addWidget(self.setupGroupBox, 0, 0)
         self.mainGrid.addWidget(self.liveControlGroupBox, 1, 0)
         self.mainGrid.addWidget(self.statusLabel, 2, 0)
-        self.mainGrid.addLayout(self.hkLayout, 0, 1, 3, 3)
-
+        self.mainGrid.addWidget(self.hkWidget, 0, 1, 2, 1)
+        self.mainGrid.addWidget(self.gpsWidget, 0, 2, 2, 1)
         self.setLayout(self.mainGrid)
 
+        self.plot_win = Plotting(self) 
     
-
-
-
-#    *
-#   **
-#  ***
-# ****
