@@ -1,84 +1,95 @@
-import numpy as np
+'''
+This script is for running 
+
+'''
 import time
-import sys
-
-from pandas import read_excel
-import src.plotting as plotting
-
+import os, sys, platform
+import ctypes
+import socket
 start_time = time.time()
 
-readfilepath = "C:/Users/ayash/PycharmProjects/SAILproj/VortEx_test02.udp"
-readfile = open(readfilepath, "rb")
+import numpy as np
 
-formatfilepath = "C:/Users/ayash/PycharmProjects/SAILproj/SAILFormat.xlsx"
-formatloc = read_excel(formatfilepath, 'Format', skiprows=0, nrows=2, usecols="C:D", names=[0, 1])
-graphformat = read_excel(formatfilepath, 'Format', skiprows=formatloc[0][0] - 1, nrows=formatloc[1][0], usecols="C:H",
-                         names=range(6))
-plotting.init(formatloc[1][0])
+from PyQt5.QtWidgets import QApplication, QDialog, QWidget
 
-graphs = []
-for index, row in graphformat.iterrows():
-    graphs.append(
-        plotting.DataGraph(index, *row))
+from gui import Window
+import plotting as plotting
+# True to turn on debugging
+print(platform.system())
+ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u'sailparser')
+dbg = True
+if dbg:
+    print(f"[Debug] {time.time()-start_time} s")
+    
+# Constants
+MINFRAME_LEN = 2 * 40
+PACKET_LENGTH = MINFRAME_LEN + 44  
+MAX_READ_LENGTH = PACKET_LENGTH * 5000  
+SYNC = [64, 40, 107, 254]
 
-instrumentformat = read_excel(formatfilepath, 'Format', skiprows=formatloc[0][1] - 1, nrows=formatloc[1][1],
-                              usecols="C:O", names=range(0, 13))
-for index, row in instrumentformat.iterrows():
-    g, color, protocol, signed, *bytedata = row.tolist()
-    graphs[g].addline(color, protocol, signed, bytedata)
 
-minframelength = 2 * 40
-packetlength = minframelength + 44  # 128
-maxreadlength = packetlength * 5000  # 640000
-sync = np.array([64, 40, 107, 254], dtype=np.uint8)
-targetsync = np.dot(sync, sync)
-endianness = np.array([3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12, 19, 18, 17, 16,
-                       23, 22, 21, 20, 27, 26, 25, 24, 31, 30, 29, 28, 35, 34, 33, 32, 39, 38, 37, 36,
-                       43, 42, 41, 40, 47, 46, 45, 44, 51, 50, 49, 48, 55, 54, 53, 52, 59, 58, 57, 56,
-                       63, 62, 61, 60, 67, 66, 65, 64, 71, 70, 69, 68, 75, 74, 73, 72, 79, 78, 77, 76])
-
-def find_sync(seq):
-    candidates = np.where(np.correlate(seq, sync, mode='valid') == targetsync)[0]
+e = np.arange(MINFRAME_LEN)
+for i in range(0, MINFRAME_LEN, 4):
+    e[i:i+4] = e[i:i+4][::-1]
+sync_arr = np.array(SYNC)
+target_sync = np.dot(sync_arr, sync_arr)
+def find_SYNC(seq):
+    candidates = np.where(np.correlate(seq, sync_arr, mode='valid') == target_sync)[0]
     check = candidates[:, np.newaxis] + np.arange(4)
-    mask = np.all((np.take(seq, check) == sync), axis=-1)
-    return candidates[mask]
+    mask = np.all((np.take(seq, check) == sync_arr), axis=-1)
+    return candidates[mask]   
 
 
-rawData = np.zeros(0).astype('uint8')
-prev_ind = 0
-plotting.fig.canvas.draw()
-background = plotting.fig.canvas.copy_from_bbox(plotting.fig.bbox)
 
-def main():
-    while True:
-        rawData = np.fromfile(readfile, dtype=np.uint8, count=maxreadlength)
-        if rawData.size== 0:
+def parse():
+    mode = win.read_mode
+    read_file = None
+    write_file = None
+    if mode == 0:
+        read_file = open(win.read_file, "rb")
+    elif mode == 1:
+        udp_ip = win.hostInputLine.text()
+        port = win.portInputLine.text()
+
+        if dbg:
+            print(f"[Debug] Connected\nIP: {udp_ip}\n Port: {port}")    
+        sock = socket.socket(socket.AF_INET, # Internet
+                     socket.SOCK_DGRAM) # UDP
+        sock.bind((udp_ip, port)) 
+
+
+    run = True
+    while run:
+        if mode == 0:
+            raw_data = np.fromfile(read_file, dtype=np.uint8, count=MAX_READ_LENGTH)
+        elif mode == 1:
+            raw_data, addr = sock.recvfrom(MAX_READ_LENGTH)
+
+        if len(raw_data) == 0:
             break
-        rawData = np.append(rawData[prev_ind:], rawData)
-        inds = find_sync(rawData)
+        
+        if win.do_write:
+            raw_data.tofile(win.write_file)
 
+        inds = find_SYNC(raw_data)       
         prev_ind = inds[-1]
-        inds = inds[:-1][(np.diff(inds) == packetlength)]
-        inds[:-1] = inds[:-1][(np.diff(rawData[inds + 6]) != 0)]
+        inds = inds[:-1][(np.diff(inds) == PACKET_LENGTH)]
+        inds[:-1] = inds[:-1][(np.diff(raw_data[inds + 6]) != 0)]
 
-        minframes = rawData[inds[:, None] + endianness].astype(int)
+        minframes = raw_data[inds[:, None] + e].astype(int)
 
         oddframe = minframes[np.where(minframes[:, 57] & 3 == 1)]
         evenframe = minframes[np.where(minframes[:, 57] & 3 == 2)]
         oddsfid = minframes[np.where(minframes[:, 5] % 2 == 1)]
         evensfid = minframes[np.where(minframes[:, 5] % 2 == 0)]
 
-        #Reset Canvas
-        plotting.fig.canvas.restore_region(background)
-        for g in graphs:
-            for line in g.lines:
-                line.getdata([minframes, oddframe, evenframe, oddsfid, evensfid])
-                g.ax.draw_artist(line.line)
-            plotting.fig.canvas.blit(g.ax.bbox)
-        plotting.fig.canvas.flush_events()
+if dbg:
+    print(f"[Debug] {time.time()-start_time} s")
 
-if __name__=="__main__":
-    print(f"{time.time() - start_time} seconds")
-    main()
-    print(f"Finished in  {time.time() - start_time} seconds")
-    plotting.run()
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u'hi')
+    win = Window(parse)
+    win.show()
+    sys.exit(app.exec_())
+ 

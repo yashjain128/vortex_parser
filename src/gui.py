@@ -7,7 +7,7 @@ from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox, QComboBox, QHBoxLayout, QFrame,
                              QMenu, QPushButton, QRadioButton, QWidget, QLabel, QLineEdit, QFileDialog)
 
-from newplotting import Plotting
+from plotting import Plotting
 
 class QSelectedGroupBox(QGroupBox): 
     clicked = QtCore.pyqtSignal(str, object)     
