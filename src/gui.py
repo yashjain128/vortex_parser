@@ -7,7 +7,7 @@ from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox, QComboBox, QHBoxLayout, QFrame,
                              QMenu, QPushButton, QRadioButton, QWidget, QLabel, QLineEdit, QFileDialog)
 
-from plotting import Plotting
+from plotting import Plotting, plt
 
 class QSelectedGroupBox(QGroupBox): 
     clicked = QtCore.pyqtSignal(str, object)     
@@ -99,7 +99,7 @@ class Window(QWidget):
         self.write_time = 0
         self.writeTimeOutput.setText(str(timedelta(0)))
     def toggle_parse(self):
-        if not self.readStart.isChecked():
+        if self.readStart.isChecked():
             if self.read_mode==0 and self.read_file==None:
                 print("Please select a read file")
                 self.readStart.setChecked(True)
@@ -108,19 +108,25 @@ class Window(QWidget):
                 print("not implemented yet")
                 self.readStart.setChecked(True)
                 return
-
             self.setupGroupBox.setDisabled(True)
-            self.setupGroupBox.update()
-            self.timer.start(1000)
-            self.plotting.parse(self.read_mode)
             
+            self.plotThread = QtCore.QThread(parent=self)
+            self.plotting.moveToThread(self.plotThread)
+
+            self.plotThread.started.connect(self.plotting.parse)
+            self.plotting.finished.connect(self.plotThread.quit)
+            self.plotting.finished.connect(self.timer.stop)
+            self.plotThread.finished.connect(self.plotThread.deleteLater)
+            self.plotThread.start()
+
+            self.timer.start(1000)
 
         else:
             print("stopped")
-            self.timer.stop()
-            self.setupGroupBox.setEnabled(True)
+            self.plotting.run = False
+
     def closeEvent(self, close_msg):
-        self.plotting.close()
+        plt.close()
 
     def __init__(self):
         super(Window, self).__init__()
@@ -129,6 +135,8 @@ class Window(QWidget):
 
         self.dir = dirname(dirname(abspath(__file__)))
 
+        self.plotThread = None
+        self.mainThread = QtCore.QCoreApplication.instance().thread()
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.time_run)
         self.read_mode = 0
@@ -252,7 +260,7 @@ class Window(QWidget):
         self.readStart.setStyleSheet("background-color: #e34040")
         self.readStart.setCheckable(True)
 
-        self.readStart.pressed.connect(self.toggle_parse)
+        self.readStart.clicked.connect(self.toggle_parse)
         # 29d97e
 
         self.writeStartLabel = QLabel("Write to file ")
@@ -338,5 +346,6 @@ class Window(QWidget):
         self.mainGrid.addWidget(self.gpsWidget, 0, 2, 4, 1)
         self.setLayout(self.mainGrid)
 
-        self.plotting = Plotting(self) 
+        self.plotting = Plotting(self)
+        #self.plotThread.finished.connect(lambda: print("Hi"))
     

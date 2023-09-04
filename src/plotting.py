@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import openpyxl
 
 from PyQt5.QtWidgets import QGridLayout, QGroupBox, QWidgetItem, QSpacerItem, QLabel, QLineEdit
+from PyQt5.QtCore import QObject, pyqtSignal
 from scipy.io import loadmat
 
 MINFRAME_LEN = 2 * 40
@@ -28,21 +29,47 @@ def find_SYNC(seq):
     return candidates[mask]   
 
 class Channel():
-    def __init__():
-        pass
+    def __init__(self, line, byte_info, signed, datay, ax):
+        self.line = line
+        self.byte_info = byte_info
+        self.signed = signed
+        self.datay = datay
+        self.ax = ax
+        self.ylim = self.ax.get_ylim()
+        print(self.ylim)
 
-class Plotting():
+    def new_data(self, minframes):
+        l = len(minframes)
+        self.datay[:l] = np.zeros(l)
+        for b in self.byte_info:
+            if b[2] < 0:
+                self.datay[:l] += (minframes[:, b[0]] & b[1]) >> abs(b[2])
+            else:
+                self.datay[:l] += (minframes[:, b[0]] & b[1]) << b[2]
+
+        if self.signed:
+            self.datay[:l] = self.datay[:l]+(self.datay[:l] >= self.ylim[1])*(2*self.ylim[0])
+        self.datay = np.roll(self.datay, -l)
+
+    def update(self):
+        self.line.set_ydata(self.datay)
+        self.ax.draw_artist(self.line)
+
+class Plotting(QObject):
+    finished = pyqtSignal()
     def __init__(self, win):
+        QObject.__init__(self)
+
         self.win = win
         self.fig = None
         self.gpsfig, self.pltfig = None, None
         self.hkNames = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3", "VBat Mon", "Dig. Temp"]
         self.gpsNames = ["Longitude (deg)", "Latitude (deg)", "Altitude (km)", "vEast (m/s)", "vNorth (m/s)", "vUp (m/s)", "Horz. Speed (m/s)", "Num Sats"]
-
-
+        
         gpsGroupBox = QGroupBox("GPS")
         gpsLayout = QGridLayout()
         gpsValues = []
+        
         for ind, name in enumerate(self.gpsNames):
             
             gpsLabel = QLabel(name)
@@ -57,7 +84,9 @@ class Plotting():
         gpsGroupBox.setLayout(gpsLayout)
 
         self.win.gpsLayout.addWidget(gpsGroupBox)
-
+        
+        self.protocols = ['all', 'odd frame', 'even frame', 'odd sfid', 'even sfid']
+        self.channels = None 
     def on_close(self, close_msg):
         self.win.pickInstrCombo.setEnabled(True)
         self.win.pickInstrButton.setEnabled(True)
@@ -85,9 +114,6 @@ class Plotting():
 
             # remove the item from layout
             layout.removeItem(item)
-                
-    def close(self):    
-        plt.close()
 
     def start_excel(self, file_path):
         self.fig = plt.figure(figsize=(16, 8))
@@ -118,13 +144,14 @@ class Plotting():
         getval = lambda c: str(sheet[c].value)
 
         # Graphs    
+
         self.pltaxes = self.pltfig.subplots(2, (int(getval('D3'))-int(getval('C3'))+2)//2).flatten('F')
         for title, xlabel, ylabel, xlim, ylim1, ylim2, ax in zip(*np.transpose(sheet[ 'C'+getval('C3'):'H'+getval('D3')]), self.pltaxes):
             ax.set_title(title.value, fontsize=10, fontweight='bold')
             ax.set_xlabel(xlabel=xlabel.value, fontsize=8)
             ax.set_ylabel(ylabel=ylabel.value, fontsize=8)
             ax.set_xlim(0, xlim.value)
-            ax.set_ylim(ylim1.value * 1.1, ylim2.value * 1.1)
+            ax.set_ylim(ylim1.value, ylim2.value)
             ax.tick_params(axis='both', which='major', labelsize=6)
             ax.ticklabel_format(axis='both', scilimits=(0, 0))
             ax.yaxis.get_offset_text().set_fontsize(6)
@@ -135,10 +162,16 @@ class Plotting():
         plt.pause(0.1)
 
         # Channels
+        self.channels = [[], [], [], [], []]
         for graphn, color, protocol, signed, *b in sheet[ 'C'+getval('C4') : 'O'+getval('D4')]:
-            datay = np.zeros(int(self.pltaxes[graphn.value].get_xlim()[1]))
-            datax = np.arange(int(self.pltaxes[graphn.value].get_xlim()[1]))
-            line, = self.pltaxes[graphn.value].plot(datax, datay, color=color.value, lw=1, linestyle='None', marker='.', markersize=0.1, animated=True)
+            ax = self.pltaxes[graphn.value]
+            datay = np.zeros(int(ax.get_xlim()[1]))
+            datax = np.arange(int(ax.get_xlim()[1]))
+            line, = ax.plot(datax, datay, color=color.value, lw=1, linestyle='None', marker='.', markersize=0.1, animated=True)
+            b = [i.value for i in b]
+            byte_info = [b[i:i+3] for i in range(0,len(b),3) if b[i]!=-1] 
+            channel = Channel(line, byte_info, signed, datay, ax)
+            self.channels[self.protocols.index(protocol.value)].append(channel)
             self.pltaxes[graphn.value].draw_artist(line)
         self.fig.canvas.blit(self.fig.bbox)
         self.fig.canvas.flush_events()
@@ -187,38 +220,15 @@ class Plotting():
         y_1 = np.arange(lonlim[0],lonlim[1], (lonlim[1]-lonlim[0])/mapdata.shape[0])
         x_1, y_1 = np.meshgrid(x_1, y_1)
         
-        self.gpsax3d.plot_surface(
-            x_1, y_1, np.array([[0]]), cstride=1, rstride=1, facecolors=mapdata, shade=False
-        )
-        self.gpsax3d.axes.set_zlim3d(bottom=0, top=150)
+        #self.gpsax3d.plot_surface(
+        #    x_1, y_1, np.array([[0]]), cstride=1, rstride=1, facecolors=mapdata, shade=False
+        #)
+        #self.gpsax3d.axes.set_zlim3d(bottom=0, top=150)
         self.fig.canvas.draw()
-   
-    def start_housekeeping(self, title, protocol, boardID, length, rate, numpoints, nbyte, nbitmask, nbitshift, *ttable):
-        groupBox = QGroupBox(title)
-        hkLayout = QGridLayout()
-        hkValues = []
-        for ind, do_hk in enumerate(ttable):
-            hkLabel = QLabel(self.hkNames[ind])
-            hkValue = QLineEdit()
-            if not do_hk:
-                hkLabel.setEnabled(False)
-                hkValue.setEnabled(False)
-            
-            hkValue.setFixedWidth(50)
-            hkValue.setReadOnly(True)
-            
-            hkLayout.addWidget(hkLabel, ind, 0)
-            hkLayout.addWidget(hkValue, ind, 1)
-            
-            hkValues.append(hkValues)
+ 
 
-        groupBox.setLayout(hkLayout)
-
-        self.win.hkLayout.addWidget(groupBox)
-    
-    def start_channel():
-        pass
-    def parse(self, mode):
+    def parse(self):
+        mode=self.win.read_mode
         print("Starts") #dlt
         read_file = None
         write_file = None
@@ -233,9 +243,8 @@ class Plotting():
                         socket.SOCK_DGRAM) # UDP
             sock.bind((udp_ip, port)) 
 
-
-        while True:
-            print("loops")
+        self.run = True
+        while self.run:
             if mode == 0:
                 raw_data = np.fromfile(read_file, dtype=np.uint8, count=MAX_READ_LENGTH)
             elif mode == 1:
@@ -252,13 +261,24 @@ class Plotting():
             inds = inds[:-1][(np.diff(inds) == PACKET_LENGTH)]
             inds[:-1] = inds[:-1][(np.diff(raw_data[inds + 6]) != 0)]
 
-            minframes = raw_data[inds[:, None] + e].astype(int)
+            all_minframes = raw_data[inds[:, None] + e].astype(int)
 
-            oddframe = minframes[np.where(minframes[:, 57] & 3 == 1)]
-            evenframe = minframes[np.where(minframes[:, 57] & 3 == 2)]
-            oddsfid = minframes[np.where(minframes[:, 5] % 2 == 1)]
-            evensfid = minframes[np.where(minframes[:, 5] % 2 == 0)]
-        
-        self.win.readStart.setChecked(True)
-        self.win.toggle_parse()
+            protocol_minframes = [all_minframes,
+                all_minframes[np.where(all_minframes[:, 57] & 3 == 1)],
+                all_minframes[np.where(all_minframes[:, 57] & 3 == 2)],
+                all_minframes[np.where(all_minframes[:, 5] % 2 == 1)],
+                all_minframes[np.where(all_minframes[:, 5] % 2 == 0)]]
+            
+            self.fig.canvas.restore_region(self.background)
+            for chs, minframes in zip(self.channels, protocol_minframes):
+                for ch in chs:
+                    ch.new_data(minframes)
+                    ch.update()
+
+            self.fig.canvas.blit(self.fig.bbox)
+            self.fig.canvas.flush_events()
+        self.moveToThread(self.win.mainThread)
+        self.win.setupGroupBox.setEnabled(True)
+        self.win.readStart.setChecked(False)
+        self.finished.emit()
         print("Stopped")
