@@ -43,7 +43,6 @@ class Channel():
         self.datay = datay
         self.ax = ax
         self.ylim = self.ax.get_ylim()
-        print(self.ylim)
 
     def new_data(self, minframes):
         l = len(minframes)
@@ -66,21 +65,33 @@ class Housekeeping:
     def __init__(self, board_id, length, rate, numpoints, b_ind, b_mask, b_shift, hkvalues):
         self.board_id = board_id
         self.length = length
+        self.indcol = np.arange(length)[:, None]
         self.rate = rate
-        self.data = np.zeros(numpoints)
+        self.data = np.zeros((length, numpoints))
         self.b_ind, self.b_mask, self.b_shift = b_ind, b_mask, b_shift
         self.hkvalues = hkvalues
+        self.hkrange = 10
 
     def new_data(self, minframes):
-        databuffer = minframes[: self.b_ind] & self.bitmask << abs(self.b_shift)
+        databuffer = minframes[:, self.b_ind] & self.b_mask << abs(self.b_shift)
         inds = np.where(databuffer == self.board_id)[0]
         inds = inds[np.where(np.diff(inds) == self.length)[0]]
         self.data[:, :inds.size] = databuffer[self.indcol + inds]
         self.data = np.roll(self.data, -inds.size, axis=1)
 
+        self.hkrange = min(10, inds.size)        
+        #print(self.data)
+
     def update(self):
-        pass
-    
+        for edit, data_row in zip(self.hkvalues, self.data):
+            if edit.isEnabled():
+                edit.setText(str(np.average(data_row[-self.hkrange:])))
+ 
+                
+
+
+        
+
 class Plotting(QObject):
     finished = pyqtSignal()
     def __init__(self, win):
@@ -218,13 +229,13 @@ class Plotting(QObject):
                 hkLayout.addWidget(hkLabel, ind, 0)
                 hkLayout.addWidget(hkValue, ind, 1)
                 
-                hkValues.append(hkValues)
+                hkValues.append(hkValue)
 
             hkGroupBox.setLayout(hkLayout)
 
             self.win.hkLayout.addWidget(hkGroupBox)
             
-            self.housekeeping[self.protocols.index(protocol.value)].append(Housekeeping(boardID, length, rate, numpoints, b_ind, b_mask, b_shift, hkValues))
+            self.housekeeping[protocols.index(protocol.value)].append(Housekeeping(boardID.value, length.value, rate.value, numpoints.value, b_ind.value, b_mask.value, b_shift.value, hkValues))
         self.win.hkWidget.show()
         self.win.gpsWidget.show()
 
@@ -301,7 +312,9 @@ class Plotting(QObject):
                     ch.update()
 
                 for hk in hks:
-                    pass
+                    hk.new_data(minframes)
+                    hk.update()
+                    
 
             self.fig.canvas.blit(self.fig.bbox)
             self.fig.canvas.flush_events()
