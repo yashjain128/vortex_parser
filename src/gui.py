@@ -1,11 +1,11 @@
 import sys, os
 from os.path import dirname, abspath, basename
-
 from datetime import datetime, timedelta
 
-from PyQt5 import QtCore, QtGui
-from PyQt5.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox, QComboBox, QHBoxLayout, QFrame,
-                             QMenu, QPushButton, QRadioButton, QWidget, QLabel, QLineEdit, QFileDialog)
+from PyQt5 import QtCore
+from PyQt5.QtGui import QIcon
+from PyQt5.QtWidgets import (QGridLayout, QGroupBox, QComboBox, QHBoxLayout, QFrame,
+                             QPushButton, QWidget, QLabel, QLineEdit, QFileDialog)
 
 from plotting import Plotting, plt
 
@@ -130,7 +130,7 @@ class Window(QWidget):
 
     def __init__(self):
         super(Window, self).__init__()
-        self.setWindowIcon(QtGui.QIcon('icon.png'))
+        self.setWindowIcon(QIcon('icon.png'))
         self.setWindowTitle("SAIL parser")
 
         self.dir = dirname(dirname(abspath(__file__)))
@@ -347,5 +347,3 @@ class Window(QWidget):
         self.setLayout(self.mainGrid)
 
         self.plotting = Plotting(self)
-        #self.plotThread.finished.connect(lambda: print("Hi"))
-    

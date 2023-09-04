@@ -26,7 +26,14 @@ def find_SYNC(seq):
     candidates = np.where(np.correlate(seq, sync_arr, mode='valid') == target_sync)[0]
     check = candidates[:, np.newaxis] + np.arange(4)
     mask = np.all((np.take(seq, check) == sync_arr), axis=-1)
-    return candidates[mask]   
+    return candidates[mask] 
+
+
+hkNames = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3", "VBat Mon", "Dig. Temp"]
+gpsNames = ["Longitude (deg)", "Latitude (deg)", "Altitude (km)", "vEast (m/s)", "vNorth (m/s)", "vUp (m/s)", "Horz. Speed (m/s)", "Num Sats"]
+
+protocols = ['all', 'odd frame', 'even frame', 'odd sfid', 'even sfid']
+
 
 class Channel():
     def __init__(self, line, byte_info, signed, datay, ax):
@@ -55,6 +62,25 @@ class Channel():
         self.line.set_ydata(self.datay)
         self.ax.draw_artist(self.line)
 
+class Housekeeping:
+    def __init__(self, board_id, length, rate, numpoints, b_ind, b_mask, b_shift, hkvalues):
+        self.board_id = board_id
+        self.length = length
+        self.rate = rate
+        self.data = np.zeros(numpoints)
+        self.b_ind, self.b_mask, self.b_shift = b_ind, b_mask, b_shift
+        self.hkvalues = hkvalues
+
+    def new_data(self, minframes):
+        databuffer = minframes[: self.b_ind] & self.bitmask << abs(self.b_shift)
+        inds = np.where(databuffer == self.board_id)[0]
+        inds = inds[np.where(np.diff(inds) == self.length)[0]]
+        self.data[:, :inds.size] = databuffer[self.indcol + inds]
+        self.data = np.roll(self.data, -inds.size, axis=1)
+
+    def update(self):
+        pass
+    
 class Plotting(QObject):
     finished = pyqtSignal()
     def __init__(self, win):
@@ -63,14 +89,12 @@ class Plotting(QObject):
         self.win = win
         self.fig = None
         self.gpsfig, self.pltfig = None, None
-        self.hkNames = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3", "VBat Mon", "Dig. Temp"]
-        self.gpsNames = ["Longitude (deg)", "Latitude (deg)", "Altitude (km)", "vEast (m/s)", "vNorth (m/s)", "vUp (m/s)", "Horz. Speed (m/s)", "Num Sats"]
-        
+
         gpsGroupBox = QGroupBox("GPS")
         gpsLayout = QGridLayout()
         gpsValues = []
         
-        for ind, name in enumerate(self.gpsNames):
+        for ind, name in enumerate(gpsNames):
             
             gpsLabel = QLabel(name)
             gpsValue = QLineEdit()
@@ -84,8 +108,7 @@ class Plotting(QObject):
         gpsGroupBox.setLayout(gpsLayout)
 
         self.win.gpsLayout.addWidget(gpsGroupBox)
-        
-        self.protocols = ['all', 'odd frame', 'even frame', 'odd sfid', 'even sfid']
+
         self.channels = None 
     def on_close(self, close_msg):
         self.win.pickInstrCombo.setEnabled(True)
@@ -143,8 +166,7 @@ class Plotting(QObject):
 
         getval = lambda c: str(sheet[c].value)
 
-        # Graphs    
-
+# Graphs    
         self.pltaxes = self.pltfig.subplots(2, (int(getval('D3'))-int(getval('C3'))+2)//2).flatten('F')
         for title, xlabel, ylabel, xlim, ylim1, ylim2, ax in zip(*np.transpose(sheet[ 'C'+getval('C3'):'H'+getval('D3')]), self.pltaxes):
             ax.set_title(title.value, fontsize=10, fontweight='bold')
@@ -161,7 +183,7 @@ class Plotting(QObject):
         self.background = self.fig.canvas.copy_from_bbox(self.fig.bbox)
         plt.pause(0.1)
 
-        # Channels
+# Channels
         self.channels = [[], [], [], [], []]
         for graphn, color, protocol, signed, *b in sheet[ 'C'+getval('C4') : 'O'+getval('D4')]:
             ax = self.pltaxes[graphn.value]
@@ -171,19 +193,20 @@ class Plotting(QObject):
             b = [i.value for i in b]
             byte_info = [b[i:i+3] for i in range(0,len(b),3) if b[i]!=-1] 
             channel = Channel(line, byte_info, signed, datay, ax)
-            self.channels[self.protocols.index(protocol.value)].append(channel)
+            self.channels[protocols.index(protocol.value)].append(channel)
             self.pltaxes[graphn.value].draw_artist(line)
         self.fig.canvas.blit(self.fig.bbox)
         self.fig.canvas.flush_events()
 
-        # Housekeeping
-        for title, protocol, boardID, length, rate, numpoints, nbyte, nbitmask, nbitshift, *ttable in sheet[ 'C'+getval('C5') : 'V'+getval('D5')]:
+# Housekeeping
+        self.housekeeping = [[], [], [], [], []]
+        for title, protocol, boardID, length, rate, numpoints, b_ind, b_mask, b_shift, *ttable in sheet[ 'C'+getval('C5') : 'V'+getval('D5')]:
             hkGroupBox = QGroupBox(title.value)
             hkLayout = QGridLayout()
             hkValues = []
 
             for ind, do_hk in enumerate(ttable):
-                hkLabel = QLabel(self.hkNames[ind])
+                hkLabel = QLabel(hkNames[ind])
                 hkValue = QLineEdit()
                 if not do_hk.value:
                     hkLabel.setEnabled(False)
@@ -200,6 +223,8 @@ class Plotting(QObject):
             hkGroupBox.setLayout(hkLayout)
 
             self.win.hkLayout.addWidget(hkGroupBox)
+            
+            self.housekeeping[self.protocols.index(protocol.value)].append(Housekeeping(boardID, length, rate, numpoints, b_ind, b_mask, b_shift, hkValues))
         self.win.hkWidget.show()
         self.win.gpsWidget.show()
 
@@ -270,10 +295,13 @@ class Plotting(QObject):
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 0)]]
             
             self.fig.canvas.restore_region(self.background)
-            for chs, minframes in zip(self.channels, protocol_minframes):
+            for chs, hks, minframes in zip(self.channels, self.housekeeping, protocol_minframes):
                 for ch in chs:
                     ch.new_data(minframes)
                     ch.update()
+
+                for hk in hks:
+                    pass
 
             self.fig.canvas.blit(self.fig.bbox)
             self.fig.canvas.flush_events()
@@ -281,4 +309,3 @@ class Plotting(QObject):
         self.win.setupGroupBox.setEnabled(True)
         self.win.readStart.setChecked(False)
         self.finished.emit()
-        print("Stopped")
