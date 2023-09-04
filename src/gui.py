@@ -40,7 +40,7 @@ class Window(QWidget):
         file_path = self.getFile("Pick a map file", "", "Mat Map Files (*.mat);;All files (*)") 
         if file_path is not None:   
             self.pickMapNameLabel.setText(basename(file_path))
-            self.plot_win.add_map(file_path)
+            self.plotting.add_map(file_path)
     
     def pick_instr(self, n):
         if n==0:
@@ -58,9 +58,9 @@ class Window(QWidget):
     def change_instr(self, file_path):
         if self.instr_file != file_path:
             self.instr_file = file_path
-            self.plot_win.start_excel(self.instr_file)
             self.pickInstrCombo.setEnabled(False)
             self.pickInstrButton.setEnabled(False)
+            self.plotting.start_excel(self.instr_file)
 
     def toggle_to_udp(self):
         self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}") 
@@ -100,7 +100,6 @@ class Window(QWidget):
         self.writeTimeOutput.setText(str(timedelta(0)))
     def toggle_parse(self):
         if not self.readStart.isChecked():
-            print("start")
             if self.read_mode==0 and self.read_file==None:
                 print("Please select a read file")
                 self.readStart.setChecked(True)
@@ -110,26 +109,23 @@ class Window(QWidget):
                 self.readStart.setChecked(True)
                 return
 
-            print("starting")
+            self.setupGroupBox.setDisabled(True)
+            self.setupGroupBox.update()
             self.timer.start(1000)
-            self.setupGroupBox.setEnabled(False)
-            self.pickInstrCombo.setCurrentIndex(0)
-            self.plot_win.start()
+            self.plotting.parse(self.read_mode)
             
-            self.parse_func()
 
         else:
             print("stopped")
             self.timer.stop()
             self.setupGroupBox.setEnabled(True)
     def closeEvent(self, close_msg):
-        self.plot_win.close()
-    def __init__(self, parse_func, parent=None):
-        super(Window, self).__init__(parent)
+        self.plotting.close()
+
+    def __init__(self):
+        super(Window, self).__init__()
         self.setWindowIcon(QtGui.QIcon('icon.png'))
         self.setWindowTitle("SAIL parser")
-
-        self.parse_func = parse_func
 
         self.dir = dirname(dirname(abspath(__file__)))
 
@@ -327,18 +323,20 @@ class Window(QWidget):
         self.hkWidget = QFrame()
         self.hkWidget.setLayout(self.hkLayout)
         self.hkWidget.hide() 
+        
         self.gpsLayout = QHBoxLayout()
         self.gpsWidget = QFrame()
         self.gpsWidget.setLayout(self.gpsLayout)
         self.gpsWidget.hide()
+
         ### Add all 
         self.mainGrid = QGridLayout()        
         self.mainGrid.addWidget(self.setupGroupBox, 0, 0)
         self.mainGrid.addWidget(self.liveControlGroupBox, 1, 0)
         self.mainGrid.addWidget(self.statusLabel, 2, 0)
-        self.mainGrid.addWidget(self.hkWidget, 0, 1, 2, 1)
-        self.mainGrid.addWidget(self.gpsWidget, 0, 2, 2, 1)
+        self.mainGrid.addWidget(self.hkWidget, 0, 1, 4, 1)
+        self.mainGrid.addWidget(self.gpsWidget, 0, 2, 4, 1)
         self.setLayout(self.mainGrid)
 
-        self.plot_win = Plotting(self) 
+        self.plotting = Plotting(self) 
     

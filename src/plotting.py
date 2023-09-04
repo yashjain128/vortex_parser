@@ -1,4 +1,6 @@
 import os, sys
+import socket
+
 import numpy as np
 
 import matplotlib.pyplot as plt
@@ -7,6 +9,27 @@ import openpyxl
 
 from PyQt5.QtWidgets import QGridLayout, QGroupBox, QWidgetItem, QSpacerItem, QLabel, QLineEdit
 from scipy.io import loadmat
+
+MINFRAME_LEN = 2 * 40
+PACKET_LENGTH = MINFRAME_LEN + 44  
+MAX_READ_LENGTH = PACKET_LENGTH * 5000  
+SYNC = [64, 40, 107, 254]
+
+
+e = np.arange(MINFRAME_LEN)
+for i in range(0, MINFRAME_LEN, 4):
+    e[i:i+4] = e[i:i+4][::-1]
+sync_arr = np.array(SYNC)
+target_sync = np.dot(sync_arr, sync_arr)
+def find_SYNC(seq):
+    candidates = np.where(np.correlate(seq, sync_arr, mode='valid') == target_sync)[0]
+    check = candidates[:, np.newaxis] + np.arange(4)
+    mask = np.all((np.take(seq, check) == sync_arr), axis=-1)
+    return candidates[mask]   
+
+class Channel():
+    def __init__():
+        pass
 
 class Plotting():
     def __init__(self, win):
@@ -73,7 +96,7 @@ class Plotting():
         self.gpsfig, self.pltfig = self.fig.subfigures(1, 2, width_ratios=[1, 3])
         self.gpsax2d = self.gpsfig.add_subplot(2, 1, 1)
         self.gpsax3d = self.gpsfig.add_subplot(2, 1, 2, projection='3d')
-
+        
         self.gpsax2d.set_title("GPS position", fontsize=10, fontweight='bold')
         self.gpsax2d.set_xlabel(xlabel="Longitude", fontsize=8)
         self.gpsax2d.set_ylabel(ylabel="Latitude", fontsize=8)
@@ -86,26 +109,66 @@ class Plotting():
         self.gpsax3d.yaxis.get_offset_text().set_fontsize(6)
         self.gpsax3d.xaxis.get_offset_text().set_fontsize(6)
         
+        self.gpsfig.subplots_adjust(left=0.2, bottom=0.08, right=0.9, top=0.95, hspace=0.25, wspace=0.25)
+        
+
         workbook = openpyxl.load_workbook(file_path, data_only=True)  
         sheet = workbook.active
 
         getval = lambda c: str(sheet[c].value)
-    
-        self.pltaxes = self.pltfig.subplots(2, (int(getval('D3'))-int(getval('C3'))+2)//2).flatten()
-        for ind, row in enumerate(sheet[ 'C'+getval('C3') : 'H'+getval('D3')]):
-            self.init_graph(ind, *[i.value for i in row])
 
-        for row in sheet[ 'C'+getval('C4') : 'O'+getval('D4')]: 
-            temp = [i.value for i in row]
-
-        for row in sheet[ 'C'+getval('C5') : 'V'+getval('D5')]:
-            self.init_housekeeping(*[i.value for i in row])
-
-        self.win.gpsWidget.show()
-        self.win.hkWidget.show()
-
-        self.gpsfig.subplots_adjust(left=0.2, bottom=0.08, right=0.9, top=0.95, hspace=0.25, wspace=0.25)
+        # Graphs    
+        self.pltaxes = self.pltfig.subplots(2, (int(getval('D3'))-int(getval('C3'))+2)//2).flatten('F')
+        for title, xlabel, ylabel, xlim, ylim1, ylim2, ax in zip(*np.transpose(sheet[ 'C'+getval('C3'):'H'+getval('D3')]), self.pltaxes):
+            ax.set_title(title.value, fontsize=10, fontweight='bold')
+            ax.set_xlabel(xlabel=xlabel.value, fontsize=8)
+            ax.set_ylabel(ylabel=ylabel.value, fontsize=8)
+            ax.set_xlim(0, xlim.value)
+            ax.set_ylim(ylim1.value * 1.1, ylim2.value * 1.1)
+            ax.tick_params(axis='both', which='major', labelsize=6)
+            ax.ticklabel_format(axis='both', scilimits=(0, 0))
+            ax.yaxis.get_offset_text().set_fontsize(6)
+            ax.xaxis.get_offset_text().set_fontsize(6)
         self.pltfig.subplots_adjust(left=0.03, bottom=0.08, right=0.97, top=0.95, hspace=0.25, wspace=0.25)
+        self.fig.canvas.draw()
+        self.background = self.fig.canvas.copy_from_bbox(self.fig.bbox)
+        plt.pause(0.1)
+
+        # Channels
+        for graphn, color, protocol, signed, *b in sheet[ 'C'+getval('C4') : 'O'+getval('D4')]:
+            datay = np.zeros(int(self.pltaxes[graphn.value].get_xlim()[1]))
+            datax = np.arange(int(self.pltaxes[graphn.value].get_xlim()[1]))
+            line, = self.pltaxes[graphn.value].plot(datax, datay, color=color.value, lw=1, linestyle='None', marker='.', markersize=0.1, animated=True)
+            self.pltaxes[graphn.value].draw_artist(line)
+        self.fig.canvas.blit(self.fig.bbox)
+        self.fig.canvas.flush_events()
+
+        # Housekeeping
+        for title, protocol, boardID, length, rate, numpoints, nbyte, nbitmask, nbitshift, *ttable in sheet[ 'C'+getval('C5') : 'V'+getval('D5')]:
+            hkGroupBox = QGroupBox(title.value)
+            hkLayout = QGridLayout()
+            hkValues = []
+
+            for ind, do_hk in enumerate(ttable):
+                hkLabel = QLabel(self.hkNames[ind])
+                hkValue = QLineEdit()
+                if not do_hk.value:
+                    hkLabel.setEnabled(False)
+                    hkValue.setEnabled(False)
+                
+                hkValue.setFixedWidth(50)
+                hkValue.setReadOnly(True)
+                
+                hkLayout.addWidget(hkLabel, ind, 0)
+                hkLayout.addWidget(hkValue, ind, 1)
+                
+                hkValues.append(hkValues)
+
+            hkGroupBox.setLayout(hkLayout)
+
+            self.win.hkLayout.addWidget(hkGroupBox)
+        self.win.hkWidget.show()
+        self.win.gpsWidget.show()
 
         self.fig.canvas.draw()
         plt.show()
@@ -129,22 +192,8 @@ class Plotting():
         )
         self.gpsax3d.axes.set_zlim3d(bottom=0, top=150)
         self.fig.canvas.draw()
-
-    def init_graph(self, n, title, xlabel, ylabel, xlim, ylim1, ylim2 ):
-        ax = self.pltaxes[n]
-
-        ax.set_title(title, fontsize=10, fontweight='bold')
-        ax.set_xlabel(xlabel=xlabel, fontsize=8)
-        ax.set_ylabel(ylabel=ylabel, fontsize=8)
-        ax.set_xlim(0, xlim)
-        ax.set_ylim(ylim1 * 1.1, ylim2 * 1.1)
-        ax.tick_params(axis='both', which='major', labelsize=6)
-        ax.ticklabel_format(axis='both', scilimits=(0, 0))
-        ax.yaxis.get_offset_text().set_fontsize(6)
-        ax.xaxis.get_offset_text().set_fontsize(6)
-        lines = []
-    
-    def init_housekeeping(self, title, protocol, boardID, length, rate, numpoints, nbyte, nbitmask, nbitshift, *ttable):
+   
+    def start_housekeeping(self, title, protocol, boardID, length, rate, numpoints, nbyte, nbitmask, nbitshift, *ttable):
         groupBox = QGroupBox(title)
         hkLayout = QGridLayout()
         hkValues = []
@@ -167,5 +216,49 @@ class Plotting():
 
         self.win.hkLayout.addWidget(groupBox)
     
-    def start(self):
-        print("Start not implemetntes")
+    def start_channel():
+        pass
+    def parse(self, mode):
+        print("Starts") #dlt
+        read_file = None
+        write_file = None
+        if mode == 0:
+            read_file = open( self.win.read_file, "rb")
+        elif mode == 1:
+            udp_ip = self.win.hostInputLine.text()
+            port = self.win.portInputLine.text()
+
+            print(f"[Debug] Connected\nIP: {udp_ip}\n Port: {port}")    
+            sock = socket.socket(socket.AF_INET, # Internet
+                        socket.SOCK_DGRAM) # UDP
+            sock.bind((udp_ip, port)) 
+
+
+        while True:
+            print("loops")
+            if mode == 0:
+                raw_data = np.fromfile(read_file, dtype=np.uint8, count=MAX_READ_LENGTH)
+            elif mode == 1:
+                raw_data, addr = sock.recvfrom(MAX_READ_LENGTH)
+
+            if len(raw_data) == 0:
+                break
+            
+            if self.win.do_write:
+                raw_data.tofile(self.win.write_file)
+
+            inds = find_SYNC(raw_data)       
+            prev_ind = inds[-1]
+            inds = inds[:-1][(np.diff(inds) == PACKET_LENGTH)]
+            inds[:-1] = inds[:-1][(np.diff(raw_data[inds + 6]) != 0)]
+
+            minframes = raw_data[inds[:, None] + e].astype(int)
+
+            oddframe = minframes[np.where(minframes[:, 57] & 3 == 1)]
+            evenframe = minframes[np.where(minframes[:, 57] & 3 == 2)]
+            oddsfid = minframes[np.where(minframes[:, 5] % 2 == 1)]
+            evensfid = minframes[np.where(minframes[:, 5] % 2 == 0)]
+        
+        self.win.readStart.setChecked(True)
+        self.win.toggle_parse()
+        print("Stopped")
