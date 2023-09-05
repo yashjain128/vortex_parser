@@ -1,3 +1,7 @@
+"""
+Module to handle GUI
+Written by Yash Jain
+"""
 import sys, os
 from os.path import dirname, abspath, basename
 from datetime import datetime, timedelta

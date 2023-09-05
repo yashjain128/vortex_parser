@@ -1,25 +1,34 @@
-import os, sys
+"""
+Module to handle plotting, housekeeping, and GPS
+
+Written by Yash Jain
+"""
+
 import socket
 
 import numpy as np
-
 import matplotlib.pyplot as plt
-
 import openpyxl
+
+import pyproj
 
 from PyQt5.QtWidgets import QGridLayout, QGroupBox, QWidgetItem, QSpacerItem, QLabel, QLineEdit
 from PyQt5.QtCore import QObject, pyqtSignal
 from scipy.io import loadmat
 
+SYNC = [64, 40, 107, 254]
 MINFRAME_LEN = 2 * 40
 PACKET_LENGTH = MINFRAME_LEN + 44  
 MAX_READ_LENGTH = PACKET_LENGTH * 5000  
-SYNC = [64, 40, 107, 254]
+
+RV_HEADER = [114, 86, 48, 50, 65]
+RV_LENGTH = 48
 
 
 e = np.arange(MINFRAME_LEN)
 for i in range(0, MINFRAME_LEN, 4):
     e[i:i+4] = e[i:i+4][::-1]
+
 sync_arr = np.array(SYNC)
 target_sync = np.dot(sync_arr, sync_arr)
 def find_SYNC(seq):
@@ -28,12 +37,23 @@ def find_SYNC(seq):
     mask = np.all((np.take(seq, check) == sync_arr), axis=-1)
     return candidates[mask] 
 
+rv_arr = np.array(RV_HEADER)
+target_rv = np.dot(rv_arr, rv_arr)
+def find_RV(seq):
+    candidates = np.where(np.correlate(seq, rv_arr, mode='valid') == target_rv)[0]
+    check = candidates[:, np.newaxis] + np.arange(5)
+    mask = np.all((np.take(seq, check) == rv_arr), axis=-1)
+    return candidates[mask] 
+
+point_transformer = pyproj.Transformer.from_crs(
+    {"proj": 'geocent', "ellps": 'WGS84', "datum": 'WGS84'},
+    {"proj": 'latlong', "ellps": 'WGS84', "datum": 'WGS84'},
+)
 
 hkNames = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3", "VBat Mon", "Dig. Temp"]
 gpsNames = ["Longitude (deg)", "Latitude (deg)", "Altitude (km)", "vEast (m/s)", "vNorth (m/s)", "vUp (m/s)", "Horz. Speed (m/s)", "Num Sats"]
 
 protocols = ['all', 'odd frame', 'even frame', 'odd sfid', 'even sfid']
-
 
 class Channel():
     def __init__(self, line, byte_info, signed, datay, ax):
@@ -76,20 +96,17 @@ class Housekeeping:
         databuffer = minframes[:, self.b_ind] & self.b_mask << abs(self.b_shift)
         inds = np.where(databuffer == self.board_id)[0]
         inds = inds[np.where(np.diff(inds) == self.length)[0]]
+        self.data = np.roll(self.data, inds.size, axis=1)
         self.data[:, :inds.size] = databuffer[self.indcol + inds]
-        self.data = np.roll(self.data, -inds.size, axis=1)
 
-        self.hkrange = min(10, inds.size)        
+        self.hkrange = min(10, inds.size)
+
         #print(self.data)
 
     def update(self):
         for edit, data_row in zip(self.hkvalues, self.data):
-            if edit.isEnabled():
-                edit.setText(str(np.average(data_row[-self.hkrange:])))
- 
-                
-
-
+            #if edit.isEnabled():
+            edit.setText(str(np.average(data_row[:self.hkrange])))
         
 
 class Plotting(QObject):
@@ -170,8 +187,12 @@ class Plotting(QObject):
         self.gpsax3d.xaxis.get_offset_text().set_fontsize(6)
         
         self.gpsfig.subplots_adjust(left=0.2, bottom=0.08, right=0.9, top=0.95, hspace=0.25, wspace=0.25)
-        
+        self.gpsbackground = self.gpsfig.canvas.copy_from_bbox(self.gpsfig.bbox)
+        self.gps_pos_lat = np.zeros(25000, float)
+        self.gps_pos_lon = np.zeros(25000, float)
+        self.gps_pos_alt = np.zeros(25000, float)
 
+        self.gps_points, = self.gpsax2d.plot([], [], linewidth=0, markerfacecolor='red', marker='o', markersize=2, markeredgewidth=0, animated=True)
         workbook = openpyxl.load_workbook(file_path, data_only=True)  
         sheet = workbook.active
 
@@ -191,7 +212,7 @@ class Plotting(QObject):
             ax.xaxis.get_offset_text().set_fontsize(6)
         self.pltfig.subplots_adjust(left=0.03, bottom=0.08, right=0.97, top=0.95, hspace=0.25, wspace=0.25)
         self.fig.canvas.draw()
-        self.background = self.fig.canvas.copy_from_bbox(self.fig.bbox)
+        self.pltbackground = self.pltfig.canvas.copy_from_bbox(self.pltfig.bbox)
         plt.pause(0.1)
 
 # Channels
@@ -261,6 +282,7 @@ class Plotting(QObject):
         #)
         #self.gpsax3d.axes.set_zlim3d(bottom=0, top=150)
         self.fig.canvas.draw()
+        self.gpsbackground = self.gpsfig.canvas.copy_from_bbox(self.gpsfig.bbox)
  
 
     def parse(self):
@@ -305,7 +327,8 @@ class Plotting(QObject):
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 1)],
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 0)]]
             
-            self.fig.canvas.restore_region(self.background)
+            self.pltfig.canvas.restore_region(self.pltbackground)
+            self.gpsfig.canvas.restore_region(self.gpsbackground)
             for chs, hks, minframes in zip(self.channels, self.housekeeping, protocol_minframes):
                 for ch in chs:
                     ch.new_data(minframes)
@@ -316,6 +339,35 @@ class Plotting(QObject):
                     hk.update()
                     
 
+            gps_raw_data = all_minframes[:, [6, 26, 46, 66]].flatten()
+            gps_check = all_minframes[:, [7, 27, 47, 67]].flatten()
+            gps_data = gps_raw_data[np.where(gps_check==128)]
+
+
+#            print(")))", gps_data)
+            gps_inds = find_RV(gps_data)
+
+            #print(">>>", gps_inds)
+            if len(gps_data) - gps_inds[-1] < RV_LENGTH:
+                gps_inds = gps_inds[:-1]
+
+            gpsmatrix = gps_data[np.add.outer(gps_inds, np.arange(48))].astype(np.uint64)
+            num_RV = np.shape(gpsmatrix)[0]
+            # Note skipped check sum
+
+            gps_pos_ecef = ((gpsmatrix[:, [12, 20, 28]] << 32) +
+                            (gpsmatrix[:, [11, 19, 27]] << 24) +
+                            (gpsmatrix[:, [10, 18, 26]] << 16) +
+                            (gpsmatrix[:, [9, 17, 25]] << 8) +
+                            (gpsmatrix[:, [16, 24, 32]]) -
+                            ((gpsmatrix[:, [12, 20, 28]]>=128)*(2**40))).transpose()/10000
+
+            #print(gps_pos_ecef)
+            self.gps_pos_lat[:num_RV], self.gps_pos_lon[:num_RV], self.gps_pos_alt[:num_RV] = point_transformer.transform(*gps_pos_ecef, radians=False)
+            self.gps_pos_lon = np.roll(self.gps_pos_lon, -num_RV)
+            self.gps_pos_lat = np.roll(self.gps_pos_lat, -num_RV)
+            self.gps_points.set_data(self.gps_pos_lon, self.gps_pos_lat)
+            self.fig.draw_artist(self.gps_points)
             self.fig.canvas.blit(self.fig.bbox)
             self.fig.canvas.flush_events()
         self.moveToThread(self.win.mainThread)
