@@ -108,7 +108,7 @@ class Window(QWidget):
                 print("Please select a read file")
                 self.readStart.setChecked(True)
                 return
-            elif self.read_mode==1:
+            elif self.read_mode==1 and self.portInputLine.text()=="":
                 print("not implemented yet")
                 self.readStart.setChecked(True)
                 return

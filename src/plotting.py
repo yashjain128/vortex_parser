@@ -105,8 +105,8 @@ class Housekeeping:
 
     def update(self):
         for edit, data_row in zip(self.hkvalues, self.data):
-            #if edit.isEnabled():
-            edit.setText(str(np.average(data_row[:self.hkrange])))
+            if edit.isEnabled():
+                edit.setText(str(np.average(data_row[:self.hkrange])))
         
 
 class Plotting(QObject):
@@ -294,12 +294,12 @@ class Plotting(QObject):
             read_file = open( self.win.read_file, "rb")
         elif mode == 1:
             udp_ip = self.win.hostInputLine.text()
-            port = self.win.portInputLine.text()
+            port = int(self.win.portInputLine.text())
 
             print(f"[Debug] Connected\nIP: {udp_ip}\n Port: {port}")    
             sock = socket.socket(socket.AF_INET, # Internet
                         socket.SOCK_DGRAM) # UDP
-            sock.bind((udp_ip, port)) 
+            sock.bind(("", port)) 
 
         self.run = True
         while self.run:
@@ -307,7 +307,7 @@ class Plotting(QObject):
                 raw_data = np.fromfile(read_file, dtype=np.uint8, count=MAX_READ_LENGTH)
             elif mode == 1:
                 raw_data, addr = sock.recvfrom(MAX_READ_LENGTH)
-
+                print(raw_data)
             if len(raw_data) == 0:
                 break
             
@@ -344,10 +344,8 @@ class Plotting(QObject):
             gps_data = gps_raw_data[np.where(gps_check==128)]
 
 
-#            print(")))", gps_data)
             gps_inds = find_RV(gps_data)
 
-            #print(">>>", gps_inds)
             if len(gps_data) - gps_inds[-1] < RV_LENGTH:
                 gps_inds = gps_inds[:-1]
 
@@ -362,7 +360,6 @@ class Plotting(QObject):
                             (gpsmatrix[:, [16, 24, 32]]) -
                             ((gpsmatrix[:, [12, 20, 28]]>=128)*(2**40))).transpose()/10000
 
-            #print(gps_pos_ecef)
             self.gps_pos_lat[:num_RV], self.gps_pos_lon[:num_RV], self.gps_pos_alt[:num_RV] = point_transformer.transform(*gps_pos_ecef, radians=False)
             self.gps_pos_lon = np.roll(self.gps_pos_lon, -num_RV)
             self.gps_pos_lat = np.roll(self.gps_pos_lat, -num_RV)
