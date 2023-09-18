@@ -40,6 +40,7 @@ def find_SYNC(seq):
 rv_arr = np.array(RV_HEADER)
 target_rv = np.dot(rv_arr, rv_arr)
 def find_RV(seq):
+    print(seq, rv_arr)
     candidates = np.where(np.correlate(seq, rv_arr, mode='valid') == target_rv)[0]
     check = candidates[:, np.newaxis] + np.arange(5)
     mask = np.all((np.take(seq, check) == rv_arr), axis=-1)
@@ -306,21 +307,32 @@ class Plotting(QObject):
             if mode == 0:
                 raw_data = np.fromfile(read_file, dtype=np.uint8, count=MAX_READ_LENGTH)
             elif mode == 1:
-                raw_data, addr = sock.recvfrom(MAX_READ_LENGTH)
-                print(raw_data)
+
+
+                soc_data = sock.recv(1024)
+                raw_data = np.frombuffer(soc_data, dtype=np.uint8)
+                
             if len(raw_data) == 0:
                 break
             
             if self.win.do_write:
                 raw_data.tofile(self.win.write_file)
+            
 
-            inds = find_SYNC(raw_data)       
+            inds = find_SYNC(raw_data)
+        
+            if len(inds)==0:
+                print("No valid sync frames")
+                continue
+            else:
+                print("good")
+            
+
             prev_ind = inds[-1]
             inds = inds[:-1][(np.diff(inds) == PACKET_LENGTH)]
             inds[:-1] = inds[:-1][(np.diff(raw_data[inds + 6]) != 0)]
 
             all_minframes = raw_data[inds[:, None] + e].astype(int)
-
             protocol_minframes = [all_minframes,
                 all_minframes[np.where(all_minframes[:, 57] & 3 == 1)],
                 all_minframes[np.where(all_minframes[:, 57] & 3 == 2)],
@@ -341,9 +353,10 @@ class Plotting(QObject):
 
             gps_raw_data = all_minframes[:, [6, 26, 46, 66]].flatten()
             gps_check = all_minframes[:, [7, 27, 47, 67]].flatten()
-            gps_data = gps_raw_data[np.where(gps_check==128)]
+            gps_data = gps_raw_data[np.where(gps_check==128)]   
 
-
+            if len(gps_data)==0:
+                continue
             gps_inds = find_RV(gps_data)
 
             if len(gps_data) - gps_inds[-1] < RV_LENGTH:

@@ -27,12 +27,12 @@ class QSelectedGroupBox(QGroupBox):
         
 class Window(QWidget):
     def getFile(self, title, fdir, ftype):
-        self.statusLabel.setText("Pick a file")
+        #self.statusLabel.setText("Pick a file")
         fname, ftypeused = QFileDialog.getOpenFileName(self, title, fdir, ftype)
         if fname:
-            self.statusLabel.setText("Ready")
+            #self.statusLabel.setText("Ready")
             return fname
-        self.statusLabel.setText("Ready")
+        #self.statusLabel.setText("Ready")
         return None
    
     def choose_recording(self):
@@ -328,7 +328,7 @@ class Window(QWidget):
         self.liveControlBox.addLayout(self.rightBox, 0, 1)
 
         self.liveControlGroupBox.setLayout(self.liveControlBox)
-        self.statusLabel = QLabel("Ready")
+        #self.statusLabel = QLabel("Ready")
          
  
         self.hkLayout = QHBoxLayout()
@@ -345,7 +345,7 @@ class Window(QWidget):
         self.mainGrid = QGridLayout()        
         self.mainGrid.addWidget(self.setupGroupBox, 0, 0)
         self.mainGrid.addWidget(self.liveControlGroupBox, 1, 0)
-        self.mainGrid.addWidget(self.statusLabel, 2, 0)
+        #self.mainGrid.addWidget(self.statusLabel, 2, 0)
         self.mainGrid.addWidget(self.hkWidget, 0, 1, 4, 1)
         self.mainGrid.addWidget(self.gpsWidget, 0, 2, 4, 1)
         self.setLayout(self.mainGrid)
