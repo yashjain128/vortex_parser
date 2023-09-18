@@ -158,7 +158,7 @@ class Window(QWidget):
         for file in os.listdir(self.search_dir):
              if file.endswith(".xlsx"):
                 self.found_instr_files.append(self.search_dir + file)
-        self.instr_file = self.found_instr_files[0]
+        self.instr_file = None
 
         # Top ------------------------------
         self.setupGroupBox = QGroupBox("Setup")
