@@ -10,8 +10,6 @@ To simulate a connection: `sendUDP.py`
 
 All of the data files are in the lib folder
 ## Setup
-Install Python
-
 Install the required libraries from the `requirements.txt` file through the command:  
 `$ pip install -r requirements.txt`
 
