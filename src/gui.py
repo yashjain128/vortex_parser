@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 
 from PyQt5 import QtCore
 from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import (QGridLayout, QGroupBox, QComboBox, QHBoxLayout, QFrame,
-                             QPushButton, QWidget, QLabel, QLineEdit, QFileDialog)
+from PyQt5.QtWidgets import (QGridLayout, QGroupBox, QComboBox, QHBoxLayout, QFrame, QMainWindow,
+                             QPushButton, QWidget, QLabel, QLineEdit, QFileDialog, QSpinBox)
 
 from plotting import Plotting, plt
 
@@ -25,7 +25,7 @@ class QSelectedGroupBox(QGroupBox):
             self.func()
             
         
-class Window(QWidget):
+class Window(QMainWindow):
     def getFile(self, title, fdir, ftype):
         #self.statusLabel.setText("Pick a file")
         fname, ftypeused = QFileDialog.getOpenFileName(self, title, fdir, ftype)
@@ -47,6 +47,7 @@ class Window(QWidget):
             self.plotting.add_map(file_path)
     
     def pick_instr(self, n):
+        print(n)
         if n==0:
             self.instr_file = None
             return
@@ -64,6 +65,8 @@ class Window(QWidget):
             self.instr_file = file_path
             self.pickInstrCombo.setEnabled(False)
             self.pickInstrButton.setEnabled(False)
+            self.plotWidthSpin.setDisabled(True)
+            self.plotWidthLabel.setDisabled(True)
             self.plotting.start_excel(self.instr_file)
 
     def toggle_to_udp(self):
@@ -102,6 +105,15 @@ class Window(QWidget):
     def reset_write_time(self):
         self.write_time = 0
         self.writeTimeOutput.setText(str(timedelta(0)))
+    
+    def toggle_hk(self):
+        self.do_hkunits = not self.do_hkunits
+        if self.do_hkunits:
+            self.hkCountUnit.setText("Units")
+        else:
+            self.hkCountUnit.setText("Counts")
+
+
     def toggle_parse(self):
         if self.readStart.isChecked():
             if self.read_mode==0 and self.read_file==None:
@@ -109,10 +121,15 @@ class Window(QWidget):
                 self.readStart.setChecked(True)
                 return
             elif self.read_mode==1 and self.portInputLine.text()=="":
-                print("not implemented yet")
+                print("No ip adress given")
                 self.readStart.setChecked(True)
                 return
+            
+            self.readStart.setText("Stop")
             self.setupGroupBox.setDisabled(True)
+            self.plotHertzSpin.setDisabled(True)
+            self.plotHertzLabel.setDisabled(True)
+            self.readStart.setStyleSheet("background-color: #29d97e")
             
             self.plotThread = QtCore.QThread(parent=self)
             self.plotting.moveToThread(self.plotThread)
@@ -133,7 +150,7 @@ class Window(QWidget):
         plt.close()
 
     def __init__(self):
-        super(Window, self).__init__()
+        QMainWindow.__init__(self)
         self.setWindowIcon(QIcon('icon.png'))
         self.setWindowTitle("SAIL parser")
 
@@ -155,6 +172,7 @@ class Window(QWidget):
         self.search_dir = self.dir + "\\lib\\"
         self.found_instr_files = []
 
+        self.do_hkunits = True
         for file in os.listdir(self.search_dir):
              if file.endswith(".xlsx"):
                 self.found_instr_files.append(self.search_dir + file)
@@ -173,6 +191,7 @@ class Window(QWidget):
         self.pickInstrCombo = QComboBox()
         self.pickInstrCombo.addItem("-- select file --")
         self.pickInstrCombo.addItems(map(basename, self.found_instr_files))
+        self.pickInstrCombo.setCurrentIndex(0)
         self.pickInstrCombo.currentIndexChanged.connect(self.pick_instr)
         self.pickInstrCombo.setLineEdit(self.pickInstrNameEdit)
         self.pickInstrNameEdit.setStyleSheet("background-color: white")
@@ -236,14 +255,22 @@ class Window(QWidget):
         
 
         self.plotHertzLabel = QLabel("Plot Update Rate (Hz)")
-        self.plotHertzInput = QLineEdit(text="5")
+        self.plotHertzSpin = QSpinBox()
+        self.plotHertzSpin.setMinimum(1)
+        self.plotHertzSpin.setMaximum(24)
+        self.plotHertzSpin.setValue(5)
+
         self.plotWidthLabel = QLabel("Plot Width (Seconds)")
-        self.plotWidthInput= QLineEdit(text="10")
+        self.plotWidthSpin = QSpinBox()
+        self.plotWidthSpin.setMinimum(1)
+        self.plotWidthSpin.setMaximum(20)
+        self.plotWidthSpin.setValue(5)
+
         self.plotSettingsBox = QGridLayout()
         self.plotSettingsBox.addWidget(self.plotHertzLabel, 0, 0)
-        self.plotSettingsBox.addWidget(self.plotHertzInput, 0, 1)
+        self.plotSettingsBox.addWidget(self.plotHertzSpin, 0, 1)
         self.plotSettingsBox.addWidget(self.plotWidthLabel, 0, 2)
-        self.plotSettingsBox.addWidget(self.plotWidthInput, 0, 3)
+        self.plotSettingsBox.addWidget(self.plotWidthSpin, 0, 3)
 
         self.setupBox = QGridLayout()
         self.setupBox.setColumnStretch(0, 1)
@@ -278,6 +305,7 @@ class Window(QWidget):
         self.hkCountUnit = QPushButton("Counts")
         self.hkCountUnit.setFixedWidth(40)
         self.hkCountUnit.setStyleSheet("background-color: #9e9e9e")
+        self.hkCountUnit.released.connect(self.toggle_hk)
 
         self.leftBox = QGridLayout()
         self.leftBox.setRowStretch(0, 1)
@@ -328,7 +356,7 @@ class Window(QWidget):
         self.liveControlBox.addLayout(self.rightBox, 0, 1)
 
         self.liveControlGroupBox.setLayout(self.liveControlBox)
-        #self.statusLabel = QLabel("Ready")
+        self.statusLabel = QLabel("Select Mission")
          
  
         self.hkLayout = QHBoxLayout()
@@ -337,17 +365,20 @@ class Window(QWidget):
         self.hkWidget.hide() 
         
         self.gpsLayout = QHBoxLayout()
+        self.gpsLayout.setAlignment(QtCore.Qt.AlignTop)
         self.gpsWidget = QFrame()
         self.gpsWidget.setLayout(self.gpsLayout)
         self.gpsWidget.hide()
 
+        self.central_widget = QWidget()               # define central widget
+        self.setCentralWidget(self.central_widget)    # set QMainWindow.centralWidget
         ### Add all 
         self.mainGrid = QGridLayout()        
         self.mainGrid.addWidget(self.setupGroupBox, 0, 0)
         self.mainGrid.addWidget(self.liveControlGroupBox, 1, 0)
         #self.mainGrid.addWidget(self.statusLabel, 2, 0)
-        self.mainGrid.addWidget(self.hkWidget, 0, 1, 4, 1)
-        self.mainGrid.addWidget(self.gpsWidget, 0, 2, 4, 1)
-        self.setLayout(self.mainGrid)
+        self.mainGrid.addWidget(self.hkWidget, 0, 1, 2, 1)
+        self.mainGrid.addWidget(self.gpsWidget, 0, 2, 2, 1)
+        self.central_widget.setLayout(self.mainGrid)
 
         self.plotting = Plotting(self)

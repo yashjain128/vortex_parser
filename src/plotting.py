@@ -5,6 +5,7 @@ Written by Yash Jain
 """
 
 import socket
+import time
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,7 +14,7 @@ import openpyxl
 import pyproj
 
 from PyQt5.QtWidgets import QGridLayout, QGroupBox, QWidgetItem, QSpacerItem, QLabel, QLineEdit
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QObject, pyqtSignal, Qt
 from scipy.io import loadmat
 
 SYNC = [64, 40, 107, 254]
@@ -40,7 +41,7 @@ def find_SYNC(seq):
 rv_arr = np.array(RV_HEADER)
 target_rv = np.dot(rv_arr, rv_arr)
 def find_RV(seq):
-    print(seq, rv_arr)
+    #print(seq, rv_arr)
     candidates = np.where(np.correlate(seq, rv_arr, mode='valid') == target_rv)[0]
     check = candidates[:, np.newaxis] + np.arange(5)
     mask = np.all((np.take(seq, check) == rv_arr), axis=-1)
@@ -140,8 +141,11 @@ class Plotting(QObject):
 
         self.channels = None 
     def on_close(self, close_msg):
+        # Reset GUI after closing plotting window
         self.win.pickInstrCombo.setEnabled(True)
         self.win.pickInstrButton.setEnabled(True)
+        self.win.plotHertzSpin.setEnabled(True)
+        self.win.plotHertzLabel.setEnabled(True)
         self.win.pickInstrCombo.setCurrentIndex(0)
         self.win.instr_file = None
 
@@ -199,13 +203,14 @@ class Plotting(QObject):
 
         getval = lambda c: str(sheet[c].value)
 
-# Graphs    
+# Graphs
+        plot_width = self.win.plotWidthSpin.value()
         self.pltaxes = self.pltfig.subplots(2, (int(getval('D3'))-int(getval('C3'))+2)//2).flatten('F')
         for title, xlabel, ylabel, xlim, ylim1, ylim2, ax in zip(*np.transpose(sheet[ 'C'+getval('C3'):'H'+getval('D3')]), self.pltaxes):
             ax.set_title(title.value, fontsize=10, fontweight='bold')
             ax.set_xlabel(xlabel=xlabel.value, fontsize=8)
             ax.set_ylabel(ylabel=ylabel.value, fontsize=8)
-            ax.set_xlim(0, xlim.value)
+            ax.set_xlim(0, xlim.value*plot_width)
             ax.set_ylim(ylim1.value, ylim2.value)
             ax.tick_params(axis='both', which='major', labelsize=6)
             ax.ticklabel_format(axis='both', scilimits=(0, 0))
@@ -236,6 +241,7 @@ class Plotting(QObject):
         for title, protocol, boardID, length, rate, numpoints, b_ind, b_mask, b_shift, *ttable in sheet[ 'C'+getval('C5') : 'V'+getval('D5')]:
             hkGroupBox = QGroupBox(title.value)
             hkLayout = QGridLayout()
+            hkLayout.setAlignment(Qt.AlignTop)
             hkValues = []
 
             for ind, do_hk in enumerate(ttable):
@@ -288,7 +294,11 @@ class Plotting(QObject):
 
     def parse(self):
         mode=self.win.read_mode
-        print("Starts") #dlt
+        
+        plt_hertz=1/self.win.plotHertzSpin.value()
+        timer = time.perf_counter()
+        do_update = True
+
         read_file = None
         write_file = None
         if mode == 0:
@@ -302,13 +312,12 @@ class Plotting(QObject):
                         socket.SOCK_DGRAM) # UDP
             sock.bind(("", port)) 
 
+        start_time = time.perf_counter()
         self.run = True
         while self.run:
             if mode == 0:
                 raw_data = np.fromfile(read_file, dtype=np.uint8, count=MAX_READ_LENGTH)
             elif mode == 1:
-
-
                 soc_data = sock.recv(1024)
                 raw_data = np.frombuffer(soc_data, dtype=np.uint8)
                 
@@ -324,9 +333,6 @@ class Plotting(QObject):
             if len(inds)==0:
                 print("No valid sync frames")
                 continue
-            else:
-                print("good")
-            
 
             prev_ind = inds[-1]
             inds = inds[:-1][(np.diff(inds) == PACKET_LENGTH)]
@@ -341,19 +347,31 @@ class Plotting(QObject):
             
             self.pltfig.canvas.restore_region(self.pltbackground)
             self.gpsfig.canvas.restore_region(self.gpsbackground)
+            cur_time = time.perf_counter()
+            if (cur_time-timer > plt_hertz):
+                #print("Update")
+                timer = cur_time
+                do_update = True
+            else:
+                pass
+                #print("Skipped")          
+            
             for chs, hks, minframes in zip(self.channels, self.housekeeping, protocol_minframes):
                 for ch in chs:
                     ch.new_data(minframes)
-                    ch.update()
+                    if do_update:
+                        ch.update()
 
                 for hk in hks:
                     hk.new_data(minframes)
-                    hk.update()
-                    
+                    if do_update:
+                        hk.update()
+
+            do_update = False
 
             gps_raw_data = all_minframes[:, [6, 26, 46, 66]].flatten()
             gps_check = all_minframes[:, [7, 27, 47, 67]].flatten()
-            gps_data = gps_raw_data[np.where(gps_check==128)]   
+            gps_data = gps_raw_data[np.where(gps_check==128)]
 
             if len(gps_data)==0:
                 continue
@@ -380,7 +398,10 @@ class Plotting(QObject):
             self.fig.draw_artist(self.gps_points)
             self.fig.canvas.blit(self.fig.bbox)
             self.fig.canvas.flush_events()
+        print(f"Done : {time.perf_counter()-start_time}")
         self.moveToThread(self.win.mainThread)
         self.win.setupGroupBox.setEnabled(True)
+        self.win.readStart.setText("Start")
+        self.win.readStart.setStyleSheet("background-color: #e34040")
         self.win.readStart.setChecked(False)
         self.finished.emit()
