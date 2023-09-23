@@ -157,7 +157,9 @@ class Window(QMainWindow):
         self.dir = dirname(dirname(abspath(__file__)))
 
         self.plotThread = None
+        print(">>")
         self.mainThread = QtCore.QCoreApplication.instance().thread()
+        print("<<")
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.time_run)
         self.read_mode = 0
