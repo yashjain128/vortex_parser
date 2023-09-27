@@ -8,12 +8,11 @@ import socket
 import time
 
 import numpy as np
-import matplotlib.pyplot as plt
 import openpyxl
-from vispy import scene, plot
+from vispy import scene, plot, app
 import pyproj
 
-from PyQt5.QtWidgets import QGridLayout, QGroupBox, QWidgetItem, QSpacerItem, QLabel, QLineEdit
+from PyQt5.QtWidgets import QGridLayout, QGroupBox, QWidgetItem, QSpacerItem, QLabel, QLineEdit, QWidget
 from PyQt5.QtCore import QObject, pyqtSignal, Qt
 from scipy.io import loadmat
 
@@ -84,29 +83,33 @@ class Graph():
         grid.add_widget(y_axis, row=1, col=0)
         y_axis.link_view(self.viewbox)
 
+        
+
 class Channel():
-    def __init__(self, ax: Graph, color, protocol, signed, b):
+    def __init__(self, ax: Graph, color, signed, b):
+        self.ax = ax
         self.color = color
-        self.data = np.array([np.arange(ax.numpoints),
-                              np.zeros(ax.numpoints)])
-        self.line = scene.Markers(self.data, edge_width=0, face_color)
+        self.signed = signed
+        self.datax = np.arange(ax.numpoints)
+        self.datay = np.zeros(ax.numpoints)
+        self.line = scene.Markers(pos=np.transpose(np.array([self.datax, self.datay])), edge_width=0, size=1, face_color=self.color, parent=self.ax.viewbox.scene, antialias=False)
+        self.byte_info = [b[i:i+3] for i in range(0,9,3) if b[i]!=-1] 
     def new_data(self, minframes):
         l = len(minframes)
         self.datay[:l] = np.zeros(l)
-        for b in self.byte_info:
-            if b[2] < 0:
-                self.datay[:l] += (minframes[:, b[0]] & b[1]) >> abs(b[2])
+        for ind, mask, shift in self.byte_info:
+            if shift < 0:
+                self.datay[:l] += (minframes[:, ind] & mask) >> abs(shift)
             else:
-                self.datay[:l] += (minframes[:, b[0]] & b[1]) << b[2]
+                self.datay[:l] += (minframes[:, ind] & mask) << shift
         
         if self.signed:
-            self.datay[:l] = self.datay[:l]+(self.datay[:l] >= self.ylim[1])*(2*self.ylim[0])
+            self.datay[:l] = self.datay[:l]+(self.datay[:l] >= self.ax.ylim[1])*(2*self.ax.ylim[0])
         self.datay = np.roll(self.datay, -l)
 
     def update(self):
-        self.line.set_ydata(self.datay)
-        self.ax.draw_artist(self.line)
-
+        #print(self.data)
+        self.line.set_data(pos=np.transpose(np.array([self.datax, self.datay])), edge_width=0, size=1, face_color=self.color)
         
         
 class Housekeeping:
@@ -134,14 +137,15 @@ class Housekeeping:
             if edit.isEnabled():
                 edit.setText(str(np.average(data_row[:self.hkrange])))
 
-class Plotting(QObject):
-    finished = pyqtSignal()
+class Plotting(QWidget):
     def __init__(self, win):
-        QObject.__init__(self)
-
+        QWidget.__init__(self)
         self.win = win
         self.fig = None
         self.gpsfig, self.pltfig = None, None
+        self.widget_layout = QGridLayout()
+        self.setLayout(self.widget_layout) 
+        self.setWindowTitle("Figure")
 
         gpsGroupBox = QGroupBox("GPS")
         gpsLayout = QGridLayout()
@@ -163,7 +167,7 @@ class Plotting(QObject):
         self.win.gpsLayout.addWidget(gpsGroupBox)
 
         self.channels = None
-    def on_close(self, close_msg):
+    def closeEvent(self, event):
         # Reset GUI after closing plotting window
         self.win.pickInstrCombo.setEnabled(True)
         self.win.pickInstrButton.setEnabled(True)
@@ -173,6 +177,7 @@ class Plotting(QObject):
         self.win.instr_file = None
 
         self.clear_layout(self.win.hkLayout)
+        self.clear_layout(self.widget_layout)
         self.win.gpsWidget.hide()
         self.win.hkWidget.hide()
         
@@ -197,10 +202,9 @@ class Plotting(QObject):
     
     def start_excel(self, file_path):
         plot_width = self.win.plotWidthSpin.value()
-        
+         
         start_time = time.perf_counter()
-        self.fig = plot.Fig(show=True)  
-
+        self.fig = plot.Fig(show=False)  
         self.gpsax2d = Graph(self.fig[0, 0], "GPS position", "Longitude", "Latitude")
         self.gpsax3d = Graph(self.fig[1, 0], "GPS position", "Longitude", "Latitude")
         
@@ -219,17 +223,20 @@ class Plotting(QObject):
             ax = Graph(self.fig[i%2, i//2+1], 
                        title, xlabel, ylabel, numpoints*plot_width, (ylim1, ylim2))
             self.pltaxes.append(ax)
+        self.show()
+        self.pltaxes[0].viewbox.update()
+        self.resize(600, 400)
 # Channels
         self.channels = [[], [], [], [], []]
         channel_arr = [list(map(lambda x:x.value, row)) for row in xl_sheet[ 'C'+getval('C4') : 'O'+getval('D4')]];
         for graphn, color, protocol, signed, *b in channel_arr:
             ax = self.pltaxes[graphn]
-            channel = Channel(ax, color, protocol, signed, b)
+            channel = Channel(ax, color, signed, b)
             self.channels[protocols.index(protocol)].append(channel)
-        self.fig.context.flush()        
+        #self.fig.context.flush()        
         print(time.perf_counter()-start_time)
         #self.fig.show()
-        return
+        
 # Housekeeping
         self.housekeeping = [[], [], [], [], []]
         for title, protocol, boardID, length, rate, numpoints, b_ind, b_mask, b_shift, *ttable in xl_sheet[ 'C'+getval('C5') : 'V'+getval('D5')]:
@@ -260,9 +267,10 @@ class Plotting(QObject):
             self.housekeeping[protocols.index(protocol.value)].append(Housekeeping(boardID.value, length.value, rate.value, numpoints.value, b_ind.value, b_mask.value, b_shift.value, hkValues))
         self.win.hkWidget.show()
         self.win.gpsWidget.show()
+        #app.Canvas.on_close = lambda: print("hi")
 
-        self.fig.canvas.draw()
-        plt.show()
+        self.widget_layout.addWidget(self.fig.native)
+        #app.process_events()
 
     def add_map(self, map_file): 
         gpsmap = loadmat(map_file)
@@ -270,22 +278,7 @@ class Plotting(QObject):
         lonlim = gpsmap['lonlim'][0]
         mapdata = gpsmap['ZA']
 
-        self.gpsax2d.imshow(mapdata, extent=[*latlim, *lonlim])
-
-        mapdata = mapdata/255
-
-        x_1 = np.arange(latlim[0], latlim[1], (latlim[1]-latlim[0])/mapdata.shape[1])
-        y_1 = np.arange(lonlim[0],lonlim[1], (lonlim[1]-lonlim[0])/mapdata.shape[0])
-        x_1, y_1 = np.meshgrid(x_1, y_1)
-        
-        #self.gpsax3d.plot_surface(
-        #    x_1, y_1, np.array([[0]]), cstride=1, rstride=1, facecolors=mapdata, shade=False
-        #)
-        #self.gpsax3d.axes.set_zlim3d(bottom=0, top=150)
-        self.fig.canvas.draw()
-        self.gpsbackground = self.gpsfig.canvas.copy_from_bbox(self.gpsfig.bbox)
- 
-
+        image = scene.visuals.Image(mapdata, parent=self.gpsax2d.viewbox.scene, method='subdivide')
     def parse(self):
         mode=self.win.read_mode
         
@@ -339,8 +332,6 @@ class Plotting(QObject):
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 1)],
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 0)]]
             
-            self.pltfig.canvas.restore_region(self.pltbackground)
-            self.gpsfig.canvas.restore_region(self.gpsbackground)
             cur_time = time.perf_counter()
             if (cur_time-timer > plt_hertz):
                 #print("Update")
@@ -360,9 +351,11 @@ class Plotting(QObject):
                     hk.new_data(minframes)
                     if do_update:
                         hk.update()
+                
+            app.process_events()
 
             do_update = False
-
+            '''
             gps_raw_data = all_minframes[:, [6, 26, 46, 66]].flatten()
             gps_check = all_minframes[:, [7, 27, 47, 67]].flatten()
             gps_data = gps_raw_data[np.where(gps_check==128)]
@@ -389,13 +382,13 @@ class Plotting(QObject):
             self.gps_pos_lon = np.roll(self.gps_pos_lon, -num_RV)
             self.gps_pos_lat = np.roll(self.gps_pos_lat, -num_RV)
             self.gps_points.set_data(self.gps_pos_lon, self.gps_pos_lat)
-            self.fig.draw_artist(self.gps_points)
-            self.fig.canvas.blit(self.fig.bbox)
-            self.fig.canvas.flush_events()
+            ''' 
         print(f"Done : {time.perf_counter()-start_time}")
-        self.moveToThread(self.win.mainThread)
+        #self.moveToThread(self.win.mainThread)
         self.win.setupGroupBox.setEnabled(True)
         self.win.readStart.setText("Start")
         self.win.readStart.setStyleSheet("background-color: #e34040")
         self.win.readStart.setChecked(False)
-        self.finished.emit()
+        self.win.timer.stop()
+        
+        #self.finished.emit()

@@ -11,7 +11,7 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (QGridLayout, QGroupBox, QComboBox, QHBoxLayout, QFrame, QMainWindow,
                              QPushButton, QWidget, QLabel, QLineEdit, QFileDialog, QSpinBox)
 
-from plotting import Plotting, plt
+from plotting import Plotting, app as plt_app
 
 class QSelectedGroupBox(QGroupBox): 
     clicked = QtCore.pyqtSignal(str, object)     
@@ -89,7 +89,7 @@ class Window(QMainWindow):
             self.writeStart.setStyleSheet("background-color: #29d97e")
             self.do_write=True
             self.writeFileNameEdit.setEnabled(False) 
-        self.write_file = open(self.dir+"/recordings/"+self.writeFileNameEdit.text()+".udp", "ab")
+        self.write_file = open(self.dir+"/.."+"/recordings/"+self.writeFileNameEdit.text()+".udp", "ab")
     
     
     def time_run(self):
@@ -118,11 +118,11 @@ class Window(QMainWindow):
         if self.readStart.isChecked():
             if self.read_mode==0 and self.read_file==None:
                 print("Please select a read file")
-                self.readStart.setChecked(True)
+                self.readStart.setChecked(False)
                 return
             elif self.read_mode==1 and self.portInputLine.text()=="":
                 print("No ip adress given")
-                self.readStart.setChecked(True)
+                self.readStart.setChecked(False)
                 return
             
             self.readStart.setText("Stop")
@@ -132,23 +132,24 @@ class Window(QMainWindow):
             self.readStart.setStyleSheet("background-color: #29d97e")
             
             self.plotThread = QtCore.QThread(parent=self)
-            self.plotting.moveToThread(self.plotThread)
+            #self.plotting.moveToThread(self.plotThread)
 
-            self.plotThread.started.connect(self.plotting.parse)
-            self.plotting.finished.connect(self.plotThread.quit)
-            self.plotting.finished.connect(self.timer.stop)
-            self.plotThread.finished.connect(self.plotThread.deleteLater)
-            self.plotThread.start()
+            #self.plotThread.started.connect(self.plotting.parse)
+            #self.plotting.finished.connect(self.plotThread.quit)
+            #self.plotting.finished.connect(self.timer.stop)
+            #self.plotThread.finished.connect(self.plotThread.deleteLater)
 
             self.timer.start(1000)
 
+            #self.plotThread.start()
+            self.plotting.parse()
         else:
             print("stopped")
             self.plotting.run = False
 
     def closeEvent(self, close_msg):
-        plt.close()
-
+        pass
+        #plt_app.quit()
     def __init__(self):
         QMainWindow.__init__(self)
         self.setWindowIcon(QIcon('icon.png'))
@@ -157,9 +158,7 @@ class Window(QMainWindow):
         self.dir = dirname(dirname(abspath(__file__)))
 
         self.plotThread = None
-        print(">>")
         self.mainThread = QtCore.QCoreApplication.instance().thread()
-        print("<<")
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.time_run)
         self.read_mode = 0
