@@ -10,19 +10,7 @@ from vispy.plot.plotwidget import PlotWidget
 
 class ScrollingPlotWidget(scene.Widget):
     """
-    Widget to facilitate plotting
 
-    Parameters
-    ----------
-    *args : arguments
-        Arguments passed to the `ViewBox` super class.
-    **kwargs : keywoard arguments
-        Keyword arguments passed to the `ViewBox` super class.
-
-    Notes
-    -----
-    This class is typically instantiated implicitly by a `Figure`
-    instance, e.g., by doing ``fig[0, 0]``.
     """
 
     def __init__(self, *args, **kwargs):
@@ -30,9 +18,9 @@ class ScrollingPlotWidget(scene.Widget):
         self.camera = None
         self.title = None
         self.title_widget = None
-        self.yaxis, self.xaxis = None, None
-        self.ylabel, self.xlabel = None, None
-        self.ylims, self.xlims = None, None
+        self.yaxis, self.xaxis, self.zaxis = None, None, None
+        self.ylabel, self.xlabel, self.zlabel = None, None, None
+        self.ylims, self.xlim, self.zlims = None, None, None
         self.data = None
         self.view_grid = None
         self._configured = False
@@ -42,7 +30,7 @@ class ScrollingPlotWidget(scene.Widget):
         super(ScrollingPlotWidget, self).__init__(*args, **kwargs)
         self.grid = self.add_grid(spacing=0, margin=10)
 
-    def configure(self, title, xlabel, ylabel, xlims=(0, 1), ylims=(0, 1)):
+    def configure2d(self, title, xlabel, ylabel, xlims=(0, 1), ylims=(0, 1)):
 
         fg = "#000000"
         self.ylims = ylims
@@ -124,7 +112,16 @@ class ScrollingPlotWidget(scene.Widget):
         self.yaxis.link_view(self.view)
 
         return self
+    def configure3d(self, title, xlabel, ylabel, zlabel, xlims=(0, 1), ylims=(0, 1), zlims=(0, 1) ):
+        self.xax = scene.Axis(pos=[[0, 0], [1, 0]], tick_direction=(0, -1), axis_color='r', tick_color='r', text_color='r', font_size=16)
 
+        yax = scene.Axis(pos=[[0, 0], [0, 1]], tick_direction=(-1, 0), axis_color='g', tick_color='g', text_color='g', font_size=16, parent=view.scene)
+
+        zax = scene.Axis(pos=[[0, 0], [-1, 0]], tick_direction=(0, -1), axis_color='b', tick_color='b', text_color='b', font_size=16, parent=view.scene)
+        zax.transform = scene.transforms.MatrixTransform()  # its acutally an inverted xaxis
+        zax.transform.rotate(90, (0, 1, 0))  # rotate cw around yaxis
+        zax.transform.rotate(-45, (0, 0, 1))
+        return self
     def add_line(self, line):
         self.view.add(line) 
         
@@ -134,3 +131,9 @@ class ScrollingPlotWidget(scene.Widget):
         self.view_grid.set_gl_state('translucent')
         self.view.add(self.view_grid)
 
+if __name__ == "__main__":
+    fig = plot.Fig(size=(800, 600))
+    fig._grid._default_class = ScrollingPlotWidget
+    ax = fig[0, 0].configure3d("title", "x", "y", "z" )
+    fig.show()
+    app.run()

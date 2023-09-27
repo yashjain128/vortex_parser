@@ -14,10 +14,11 @@ from vispy.visuals.transforms import STTransform
 import pyproj
 
 from PyQt5.QtWidgets import QGridLayout, QGroupBox, QWidgetItem, QSpacerItem, QLabel, QLineEdit, QWidget
-from PyQt5.QtCore import QObject, pyqtSignal, Qt
+from PyQt5.QtCore import Qt
 from scipy.io import loadmat
 
 from scrollingplotwidget import ScrollingPlotWidget
+
 
 SYNC = [64, 40, 107, 254]
 MINFRAME_LEN = 2 * 40
@@ -25,8 +26,7 @@ PACKET_LENGTH = MINFRAME_LEN + 44
 MAX_READ_LENGTH = PACKET_LENGTH * 5000  
 
 RV_HEADER = [114, 86, 48, 50, 65]
-RV_LENGTH = 48
-
+RV_LEN = 48
 
 e = np.arange(MINFRAME_LEN)
 for i in range(0, MINFRAME_LEN, 4):
@@ -43,7 +43,6 @@ def find_SYNC(seq):
 rv_arr = np.array(RV_HEADER)
 target_rv = np.dot(rv_arr, rv_arr)
 def find_RV(seq):
-    #print(seq, rv_arr)
     candidates = np.where(np.correlate(seq, rv_arr, mode='valid') == target_rv)[0]
     check = candidates[:, np.newaxis] + np.arange(5)
     mask = np.all((np.take(seq, check) == rv_arr), axis=-1)
@@ -153,6 +152,7 @@ class Plotting(QWidget):
         self.win.pickInstrCombo.setCurrentIndex(0)
         self.win.instr_file = None
 
+
         self.clear_layout(self.win.hkLayout)
         self.clear_layout(self.widget_layout)
         self.win.gpsWidget.hide()
@@ -186,10 +186,10 @@ class Plotting(QWidget):
         self.widget_layout.addWidget(self.fig.native)
         self.fig._grid._default_class = ScrollingPlotWidget
         
-        self.gpsax2d = self.fig[0, 0].configure(title="GPS position", 
+        self.gpsax2d = self.fig[0, 0].configure2d(title="GPS position", 
                                                 xlabel="Longitude", 
                                                 ylabel="Latitude")
-        self.gpsax3d = self.fig[1, 0].configure(title="GPS position", 
+        self.gpsax3d = self.fig[1, 0].configure2d(title="GPS position", 
                                                 xlabel="Longitude", 
                                                 ylabel="Latitude")
         
@@ -207,7 +207,7 @@ class Plotting(QWidget):
         self.pltaxes = []        
         graph_arr = [[i]+list(map(lambda x:x.value, row)) for i, row in enumerate(xl_sheet[ 'C'+getval('C3'):'H'+getval('D3')])]
         for i, title, xlabel, ylabel, numpoints, ylim1, ylim2 in graph_arr:
-            ax = self.fig[i%2, i//2+1].configure( title, xlabel, ylabel,(0, numpoints*plot_width), (ylim1, ylim2)) 
+            ax = self.fig[i%2, i//2+1].configure2d( title, xlabel, ylabel,(0, numpoints*plot_width), (ylim1, ylim2)) 
             self.pltaxes.append(ax)
 
 # Channels
@@ -272,14 +272,13 @@ class Plotting(QWidget):
         read_file = None
         write_file = None
         if mode == 0:
-            read_file = open( self.win.read_file, "rb")
+            read_file = open(self.win.read_file, "rb")
         elif mode == 1:
             udp_ip = self.win.hostInputLine.text()
             port = int(self.win.portInputLine.text())
 
             print(f"[Debug] Connected\nIP: {udp_ip}\n Port: {port}")    
-            sock = socket.socket(socket.AF_INET, # Internet
-                        socket.SOCK_DGRAM) # UDP
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
             sock.bind(("", port)) 
 
         start_time = time.perf_counter()
@@ -323,7 +322,7 @@ class Plotting(QWidget):
                 continue
             gps_inds = find_RV(gps_data)
 
-            if len(gps_data) - gps_inds[-1] < RV_LENGTH:
+            if len(gps_data) - gps_inds[-1] < RV_LEN:
                 gps_inds = gps_inds[:-1]
 
             gpsmatrix = gps_data[np.add.outer(gps_inds, np.arange(48))].astype(np.uint64)
@@ -340,11 +339,12 @@ class Plotting(QWidget):
             self.gps_pos_lat[:num_RV], self.gps_pos_lon[:num_RV], self.gps_pos_alt[:num_RV] = point_transformer.transform(*gps_pos_ecef, radians=False)
             self.gps_pos_lon = np.roll(self.gps_pos_lon, -num_RV)
             self.gps_pos_lat = np.roll(self.gps_pos_lat, -num_RV)
-            
+
+            # check if plt_hertz time has elapsed, set do_update to true 
             cur_time = time.perf_counter()
-            if (cur_time-timer > plt_hertz):
+            do_update = (cur_time-timer) > plt_hertz
+            if (do_update):
                 timer = cur_time
-                do_update = True
             
             for chs, hks, minframes in zip(self.channels, self.housekeeping, protocol_minframes):
                 for ch in chs:
@@ -358,11 +358,10 @@ class Plotting(QWidget):
                         hk.update()
 
             if do_update:
+                # update gps points
                 self.gps_points.set_data(pos=np.transpose(np.array([self.gps_pos_lat, self.gps_pos_lon])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
                 
             app.process_events()
-
-            do_update = False
             
 
         print(f"Done : {time.perf_counter()-start_time}")
