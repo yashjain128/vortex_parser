@@ -8,8 +8,9 @@ from vispy.io import read_mesh
 from vispy.geometry import MeshData
 from vispy.plot.plotwidget import PlotWidget
 
-class PlotWidget2(scene.Widget):
-    """Widget to facilitate plotting
+class ScrollingPlotWidget(scene.Widget):
+    """
+    Widget to facilitate plotting
 
     Parameters
     ----------
@@ -25,7 +26,6 @@ class PlotWidget2(scene.Widget):
     """
 
     def __init__(self, *args, **kwargs):
-        self._fg = kwargs.pop('fg_color', 'k')
         self.grid = None
         self.camera = None
         self.title = None
@@ -39,10 +39,10 @@ class PlotWidget2(scene.Widget):
         self.visuals = []
         self.section_y_x = None
 
-        super(PlotWidget2, self).__init__(*args, **kwargs)
+        super(ScrollingPlotWidget, self).__init__(*args, **kwargs)
         self.grid = self.add_grid(spacing=0, margin=10)
 
-    def configure(self, title, xlabel, ylabel, xlims, ylims):
+    def configure(self, title, xlabel, ylabel, xlims=(0, 1), ylims=(0, 1)):
 
         fg = "#000000"
         self.ylims = ylims
@@ -125,105 +125,12 @@ class PlotWidget2(scene.Widget):
 
         return self
 
-    def plot(self, color):
-        """Plot a series of data using lines and markers
-
-        Parameters
-        ----------
-        data : array | two arrays
-            Arguments can be passed as ``(Y,)``, ``(X, Y)`` or
-            ``np.array((X, Y))``.
-        color : instance of Color
-            Color of the line.
-        symbol : str
-            Marker symbol to use.
-        line_kind : str
-            Kind of line to draw. For now, only solid lines (``'-'``)
-            are supported.
-        width : float
-            Line width.
-        marker_size : float
-            Marker size. If `size == 0` markers will not be shown.
-        edge_color : instance of Color
-            Color of the marker edge.
-        face_color : instance of Color
-            Color of the marker face.
-        edge_width : float
-            Edge width of the marker.
-        title : str | None
-            The title string to be displayed above the plot
-        xlabel : str | None
-            The label to display along the bottom axis
-        ylabel : str | None
-            The label to display along the left axis.
-        connect : str | array
-            Determines which vertices are connected by lines.
-
-        Returns
-        -------
-        line : instance of LinePlot
-            The line plot.
-
-        See also
-        --------
-        LinePlot
-        """
-        datax = np.arange(self.xlims[1])
-        datay = np.zeros(self.xlims[1])
-        self.data = np.transpose(np.array([datax, datay]))
-        line = scene.Markers(pos=self.data, edge_width=0, size=2, face_color=color, antialias=False)
-        self.view.add(line)
-        
+    def add_line(self, line):
+        self.view.add(line) 
         
         return line
     def add_gridlines(self):
-        self.view_grid = vp.visuals.GridLines(color=(0, 0, 0, 0.3))
+        self.view_grid = scene.visuals.GridLines(color=(0, 0, 0, 0.3))
         self.view_grid.set_gl_state('translucent')
         self.view.add(self.view_grid)
 
-fig = vp.Fig(size=(1200, 800), show=False)
-fig._grid._default_class = PlotWidget2
-
-ax = fig[0, 0].configure(
-    title="My title", 
-    xlabel="My xlabel", 
-    ylabel="My ylabel", 
-    xlims=(0, 2000), 
-    ylims=(-2000, 2000))
-l = ax.plot("#ff00ff")
-ax.add_gridlines() 
-
-fig[0, 1].configure(
-    title="My title", 
-    xlabel="My xlabel", 
-    ylabel="My ylabel", 
-    xlims=(0, 2000),
-    ylims=(-1000, 1000))
-fig[0, 2].configure(
-    title="My title", 
-    xlabel="My xlabel", 
-    ylabel="My ylabel", 
-    xlims=(0, 2000),
-    ylims=(-1000, 1000))
-fig[1, 0].configure(
-    title="My title", 
-    xlabel="My xlabel", 
-    ylabel="My ylabel", 
-    xlims=(0, 2000),
-    ylims=(-1000, 1000))
-fig[1, 1].configure(
-    title="My title", 
-    xlabel="My xlabel", 
-    ylabel="My ylabel", 
-    xlims=(0, 2000),
-    ylims=(-1000, 1000))
-fig[1, 2].configure(
-    title="My title", 
-    xlabel="My xlabel", 
-    ylabel="My ylabel", 
-    xlims=(0, 2000),
-    ylims=(-1000, 1000))
-
-
-if __name__ == '__main__':
-    fig.show(run=True)

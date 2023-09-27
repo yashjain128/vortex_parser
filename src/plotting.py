@@ -8,14 +8,15 @@ import socket
 import time
 
 import numpy as np
-import matplotlib.pyplot as plt
 import openpyxl
-
+from vispy import scene, plot, app
 import pyproj
 
-from PyQt5.QtWidgets import QGridLayout, QGroupBox, QWidgetItem, QSpacerItem, QLabel, QLineEdit
+from PyQt5.QtWidgets import QGridLayout, QGroupBox, QWidgetItem, QSpacerItem, QLabel, QLineEdit, QWidget
 from PyQt5.QtCore import QObject, pyqtSignal, Qt
 from scipy.io import loadmat
+
+from scrollingplotwidget import ScrollingPlotWidget
 
 SYNC = [64, 40, 107, 254]
 MINFRAME_LEN = 2 * 40
@@ -58,31 +59,34 @@ gpsNames = ["Longitude (deg)", "Latitude (deg)", "Altitude (km)", "vEast (m/s)",
 protocols = ['all', 'odd frame', 'even frame', 'odd sfid', 'even sfid']
 
 class Channel():
-    def __init__(self, line, byte_info, signed, datay, ax):
-        self.line = line
-        self.byte_info = byte_info
-        self.signed = signed
-        self.datay = datay
+    def __init__(self, ax: ScrollingPlotWidget, color, signed, b):
         self.ax = ax
-        self.ylim = self.ax.get_ylim()
-
+        self.color = color
+        self.signed = signed
+        self.datax = np.arange(ax.xlims[1])
+        self.datay = np.zeros(ax.xlims[1])
+        self.line = scene.Markers(pos=np.transpose(np.array([self.datax, self.datay])), edge_width=0, size=1, face_color=self.color, antialias=False)
+        self.ax.add_line(self.line)
+        self.ylims = self.ax.ylims
+        self.byte_info = [b[i:i+3] for i in range(0,9,3) if b[i]!=-1]
     def new_data(self, minframes):
         l = len(minframes)
         self.datay[:l] = np.zeros(l)
-        for b in self.byte_info:
-            if b[2] < 0:
-                self.datay[:l] += (minframes[:, b[0]] & b[1]) >> abs(b[2])
+        for ind, mask, shift in self.byte_info:
+            if shift < 0:
+                self.datay[:l] += (minframes[:, ind] & mask) >> abs(shift)
             else:
-                self.datay[:l] += (minframes[:, b[0]] & b[1]) << b[2]
-
+                self.datay[:l] += (minframes[:, ind] & mask) << shift
+        
         if self.signed:
-            self.datay[:l] = self.datay[:l]+(self.datay[:l] >= self.ylim[1])*(2*self.ylim[0])
+            self.datay[:l] = self.datay[:l]+(self.datay[:l] >= self.ylims[1])*(2*self.ylims[0])
         self.datay = np.roll(self.datay, -l)
 
     def update(self):
-        self.line.set_ydata(self.datay)
-        self.ax.draw_artist(self.line)
-
+        #print(self.data)
+        self.line.set_data(pos=np.transpose(np.array([self.datax, self.datay])), edge_width=0, size=1, face_color=self.color)
+        
+        
 class Housekeeping:
     def __init__(self, board_id, length, rate, numpoints, b_ind, b_mask, b_shift, hkvalues):
         self.board_id = board_id
@@ -103,22 +107,20 @@ class Housekeeping:
 
         self.hkrange = min(10, inds.size)
 
-        #print(self.data)
-
     def update(self):
         for edit, data_row in zip(self.hkvalues, self.data):
             if edit.isEnabled():
                 edit.setText(str(np.average(data_row[:self.hkrange])))
-        
 
-class Plotting(QObject):
-    finished = pyqtSignal()
+class Plotting(QWidget):
     def __init__(self, win):
-        QObject.__init__(self)
-
+        QWidget.__init__(self)
         self.win = win
         self.fig = None
         self.gpsfig, self.pltfig = None, None
+        self.widget_layout = QGridLayout()
+        self.setLayout(self.widget_layout) 
+        self.setWindowTitle("Figure")
 
         gpsGroupBox = QGroupBox("GPS")
         gpsLayout = QGridLayout()
@@ -139,8 +141,8 @@ class Plotting(QObject):
 
         self.win.gpsLayout.addWidget(gpsGroupBox)
 
-        self.channels = None 
-    def on_close(self, close_msg):
+        self.channels = None
+    def closeEvent(self, event):
         # Reset GUI after closing plotting window
         self.win.pickInstrCombo.setEnabled(True)
         self.win.pickInstrButton.setEnabled(True)
@@ -150,6 +152,7 @@ class Plotting(QObject):
         self.win.instr_file = None
 
         self.clear_layout(self.win.hkLayout)
+        self.clear_layout(self.widget_layout)
         self.win.gpsWidget.hide()
         self.win.hkWidget.hide()
         
@@ -171,74 +174,51 @@ class Plotting(QObject):
             # remove the item from layout
             layout.removeItem(item)
 
+    
     def start_excel(self, file_path):
-        self.fig = plt.figure(figsize=(16, 8))
-        self.fig.canvas.mpl_connect('close_event', self.on_close)
-
-        self.gpsfig, self.pltfig = self.fig.subfigures(1, 2, width_ratios=[1, 3])
-        self.gpsax2d = self.gpsfig.add_subplot(2, 1, 1)
-        self.gpsax3d = self.gpsfig.add_subplot(2, 1, 2, projection='3d')
+        plot_width = self.win.plotWidthSpin.value()
+         
+        start_time = time.perf_counter()
+        self.fig = plot.Fig(size=(1200, 800), show=False)
+        self.widget_layout.addWidget(self.fig.native)
+        self.fig._grid._default_class = ScrollingPlotWidget
         
-        self.gpsax2d.set_title("GPS position", fontsize=10, fontweight='bold')
-        self.gpsax2d.set_xlabel(xlabel="Longitude", fontsize=8)
-        self.gpsax2d.set_ylabel(ylabel="Latitude", fontsize=8)
-        self.gpsax2d.tick_params(axis='both', which='major', labelsize=6)
-        self.gpsax2d.ticklabel_format(axis='both', scilimits=(0, 0))
-        self.gpsax2d.yaxis.get_offset_text().set_fontsize(6)
-        self.gpsax2d.xaxis.get_offset_text().set_fontsize(6)
-        self.pltaxes = []
-
-        self.gpsax3d.yaxis.get_offset_text().set_fontsize(6)
-        self.gpsax3d.xaxis.get_offset_text().set_fontsize(6)
+        self.gpsax2d = self.fig[0, 0].configure(title="GPS position", 
+                                                xlabel="Longitude", 
+                                                ylabel="Latitude")
+        self.gpsax3d = self.fig[1, 0].configure(title="GPS position", 
+                                                xlabel="Longitude", 
+                                                ylabel="Latitude")
         
-        self.gpsfig.subplots_adjust(left=0.2, bottom=0.08, right=0.9, top=0.95, hspace=0.25, wspace=0.25)
-        self.gpsbackground = self.gpsfig.canvas.copy_from_bbox(self.gpsfig.bbox)
         self.gps_pos_lat = np.zeros(25000, float)
         self.gps_pos_lon = np.zeros(25000, float)
         self.gps_pos_alt = np.zeros(25000, float)
-
-        self.gps_points, = self.gpsax2d.plot([], [], linewidth=0, markerfacecolor='red', marker='o', markersize=2, markeredgewidth=0, animated=True)
-        workbook = openpyxl.load_workbook(file_path, data_only=True)  
-        sheet = workbook.active
-
-        getval = lambda c: str(sheet[c].value)
+        #self.gps_points = scene.Markers(face_color="#ff0000", edge_width=0, size=4, parent=self.gpsax2d.viewbox.scene, antialias=False, symbol='s')
+        
+        xl_sheet = openpyxl.load_workbook(file_path, data_only=True).active
+        getval = lambda c: str(xl_sheet[c].value)
+        self.show()
 
 # Graphs
-        plot_width = self.win.plotWidthSpin.value()
-        self.pltaxes = self.pltfig.subplots(2, (int(getval('D3'))-int(getval('C3'))+2)//2).flatten('F')
-        for title, xlabel, ylabel, xlim, ylim1, ylim2, ax in zip(*np.transpose(sheet[ 'C'+getval('C3'):'H'+getval('D3')]), self.pltaxes):
-            ax.set_title(title.value, fontsize=10, fontweight='bold')
-            ax.set_xlabel(xlabel=xlabel.value, fontsize=8)
-            ax.set_ylabel(ylabel=ylabel.value, fontsize=8)
-            ax.set_xlim(0, xlim.value*plot_width)
-            ax.set_ylim(ylim1.value, ylim2.value)
-            ax.tick_params(axis='both', which='major', labelsize=6)
-            ax.ticklabel_format(axis='both', scilimits=(0, 0))
-            ax.yaxis.get_offset_text().set_fontsize(6)
-            ax.xaxis.get_offset_text().set_fontsize(6)
-        self.pltfig.subplots_adjust(left=0.03, bottom=0.08, right=0.97, top=0.95, hspace=0.25, wspace=0.25)
-        self.fig.canvas.draw()
-        self.pltbackground = self.pltfig.canvas.copy_from_bbox(self.pltfig.bbox)
-        plt.pause(0.1)
-
+        self.pltaxes = []        
+        graph_arr = [[i]+list(map(lambda x:x.value, row)) for i, row in enumerate(xl_sheet[ 'C'+getval('C3'):'H'+getval('D3')])]
+        for i, title, xlabel, ylabel, numpoints, ylim1, ylim2 in graph_arr:
+            ax = self.fig[i%2, i//2+1].configure( title, xlabel, ylabel,(0, numpoints*plot_width), (ylim1, ylim2)) 
+            self.pltaxes.append(ax)
 # Channels
         self.channels = [[], [], [], [], []]
-        for graphn, color, protocol, signed, *b in sheet[ 'C'+getval('C4') : 'O'+getval('D4')]:
-            ax = self.pltaxes[graphn.value]
-            datay = np.zeros(int(ax.get_xlim()[1]))
-            datax = np.arange(int(ax.get_xlim()[1]))
-            line, = ax.plot(datax, datay, color=color.value, lw=1, linestyle='None', marker='.', markersize=0.1, animated=True)
-            b = [i.value for i in b]
-            byte_info = [b[i:i+3] for i in range(0,len(b),3) if b[i]!=-1] 
-            channel = Channel(line, byte_info, signed, datay, ax)
-            self.channels[protocols.index(protocol.value)].append(channel)
-            self.pltaxes[graphn.value].draw_artist(line)
-        self.fig.canvas.blit(self.fig.bbox)
-        self.fig.canvas.flush_events()
-
+        channel_arr = [list(map(lambda x:x.value, row)) for row in xl_sheet[ 'C'+getval('C4') : 'O'+getval('D4')]];
+        for graphn, color, protocol, signed, *b in channel_arr:
+            ax = self.pltaxes[graphn]
+            channel = Channel(ax, color, signed, b)
+            self.channels[protocols.index(protocol)].append(channel)
+        #self.fig.context.flush()        
+        print(time.perf_counter()-start_time)
+        #self.fig.show()
+        
 # Housekeeping
         self.housekeeping = [[], [], [], [], []]
-        for title, protocol, boardID, length, rate, numpoints, b_ind, b_mask, b_shift, *ttable in sheet[ 'C'+getval('C5') : 'V'+getval('D5')]:
+        for title, protocol, boardID, length, rate, numpoints, b_ind, b_mask, b_shift, *ttable in xl_sheet[ 'C'+getval('C5') : 'V'+getval('D5')]:
             hkGroupBox = QGroupBox(title.value)
             hkLayout = QGridLayout()
             hkLayout.setAlignment(Qt.AlignTop)
@@ -266,9 +246,9 @@ class Plotting(QObject):
             self.housekeeping[protocols.index(protocol.value)].append(Housekeeping(boardID.value, length.value, rate.value, numpoints.value, b_ind.value, b_mask.value, b_shift.value, hkValues))
         self.win.hkWidget.show()
         self.win.gpsWidget.show()
+        #app.Canvas.on_close = lambda: print("hi")
 
-        self.fig.canvas.draw()
-        plt.show()
+        #app.process_events()
 
     def add_map(self, map_file): 
         gpsmap = loadmat(map_file)
@@ -276,22 +256,7 @@ class Plotting(QObject):
         lonlim = gpsmap['lonlim'][0]
         mapdata = gpsmap['ZA']
 
-        self.gpsax2d.imshow(mapdata, extent=[*latlim, *lonlim])
-
-        mapdata = mapdata/255
-
-        x_1 = np.arange(latlim[0], latlim[1], (latlim[1]-latlim[0])/mapdata.shape[1])
-        y_1 = np.arange(lonlim[0],lonlim[1], (lonlim[1]-lonlim[0])/mapdata.shape[0])
-        x_1, y_1 = np.meshgrid(x_1, y_1)
-        
-        #self.gpsax3d.plot_surface(
-        #    x_1, y_1, np.array([[0]]), cstride=1, rstride=1, facecolors=mapdata, shade=False
-        #)
-        #self.gpsax3d.axes.set_zlim3d(bottom=0, top=150)
-        self.fig.canvas.draw()
-        self.gpsbackground = self.gpsfig.canvas.copy_from_bbox(self.gpsfig.bbox)
- 
-
+        image = scene.visuals.Image(mapdata, parent=self.gpsax2d.viewbox.scene, method='subdivide')
     def parse(self):
         mode=self.win.read_mode
         
@@ -345,8 +310,6 @@ class Plotting(QObject):
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 1)],
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 0)]]
             
-            self.pltfig.canvas.restore_region(self.pltbackground)
-            self.gpsfig.canvas.restore_region(self.gpsbackground)
             cur_time = time.perf_counter()
             if (cur_time-timer > plt_hertz):
                 #print("Update")
@@ -366,9 +329,11 @@ class Plotting(QObject):
                     hk.new_data(minframes)
                     if do_update:
                         hk.update()
+                
+            app.process_events()
 
             do_update = False
-
+            '''
             gps_raw_data = all_minframes[:, [6, 26, 46, 66]].flatten()
             gps_check = all_minframes[:, [7, 27, 47, 67]].flatten()
             gps_data = gps_raw_data[np.where(gps_check==128)]
@@ -395,13 +360,13 @@ class Plotting(QObject):
             self.gps_pos_lon = np.roll(self.gps_pos_lon, -num_RV)
             self.gps_pos_lat = np.roll(self.gps_pos_lat, -num_RV)
             self.gps_points.set_data(self.gps_pos_lon, self.gps_pos_lat)
-            self.fig.draw_artist(self.gps_points)
-            self.fig.canvas.blit(self.fig.bbox)
-            self.fig.canvas.flush_events()
+            ''' 
         print(f"Done : {time.perf_counter()-start_time}")
-        self.moveToThread(self.win.mainThread)
+        #self.moveToThread(self.win.mainThread)
         self.win.setupGroupBox.setEnabled(True)
         self.win.readStart.setText("Start")
         self.win.readStart.setStyleSheet("background-color: #e34040")
         self.win.readStart.setChecked(False)
-        self.finished.emit()
+        self.win.timer.stop()
+        
+        #self.finished.emit()
