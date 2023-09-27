@@ -15,15 +15,13 @@ Install the required libraries from the `requirements.txt` file through the comm
 
 Or download the libraries manually:   
 `numpy`
-`matplotlib`
+`vispy`
 `openpyxl`
 `PyQt5`
 `scipy`
 `pyproj`
 
-
 Run `main.py` from the source folder
-
 
 ##
 Contributed by Yash Jain

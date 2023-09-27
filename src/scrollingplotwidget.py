@@ -130,7 +130,7 @@ class ScrollingPlotWidget(scene.Widget):
         
         return line
     def add_gridlines(self):
-        self.view_grid = scene.visuals.GridLines(color=(0, 0, 0, 0.3))
+        self.view_grid = scene.visuals.GridLines(color=(0, 0, 0, 0.5))
         self.view_grid.set_gl_state('translucent')
         self.view.add(self.view_grid)
 

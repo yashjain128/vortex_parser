@@ -10,6 +10,7 @@ import time
 import numpy as np
 import openpyxl
 from vispy import scene, plot, app
+from vispy.visuals.transforms import STTransform
 import pyproj
 
 from PyQt5.QtWidgets import QGridLayout, QGroupBox, QWidgetItem, QSpacerItem, QLabel, QLineEdit, QWidget
@@ -84,7 +85,8 @@ class Channel():
 
     def update(self):
         #print(self.data)
-        self.line.set_data(pos=np.transpose(np.array([self.datax, self.datay])), edge_width=0, size=1, face_color=self.color)
+        data = np.transpose(np.array([self.datax, self.datay]))
+        self.line.set_data(pos=data, edge_width=0, size=1, face_color=self.color)
         
         
 class Housekeeping:
@@ -162,13 +164,14 @@ class Plotting(QWidget):
             item = layout.itemAt(i)
 
             if isinstance(item, QWidgetItem):
-                print("widget" + str(item))
+                #print("widget" + str(item))
                 item.widget().close()
 
             elif isinstance(item, QSpacerItem):
-                print("spacer " + str(item))
+                #print("spacer " + str(item))
+                pass
             else:
-                print("layout " + str(item))
+                #print("layout " + str(item))
                 self.clear_layout(item.layout())
 
             # remove the item from layout
@@ -193,7 +196,8 @@ class Plotting(QWidget):
         self.gps_pos_lat = np.zeros(25000, float)
         self.gps_pos_lon = np.zeros(25000, float)
         self.gps_pos_alt = np.zeros(25000, float)
-        #self.gps_points = scene.Markers(face_color="#ff0000", edge_width=0, size=4, parent=self.gpsax2d.viewbox.scene, antialias=False, symbol='s')
+        
+        self.gps_points = scene.Markers(pos=np.transpose(np.array([self.gps_pos_lat, self.gps_pos_lon])),face_color="#ff0000", edge_width=0, size=5, parent=self.gpsax2d.view.scene, antialias=False, symbol='s')
         
         xl_sheet = openpyxl.load_workbook(file_path, data_only=True).active
         getval = lambda c: str(xl_sheet[c].value)
@@ -205,6 +209,7 @@ class Plotting(QWidget):
         for i, title, xlabel, ylabel, numpoints, ylim1, ylim2 in graph_arr:
             ax = self.fig[i%2, i//2+1].configure( title, xlabel, ylabel,(0, numpoints*plot_width), (ylim1, ylim2)) 
             self.pltaxes.append(ax)
+
 # Channels
         self.channels = [[], [], [], [], []]
         channel_arr = [list(map(lambda x:x.value, row)) for row in xl_sheet[ 'C'+getval('C4') : 'O'+getval('D4')]];
@@ -212,10 +217,9 @@ class Plotting(QWidget):
             ax = self.pltaxes[graphn]
             channel = Channel(ax, color, signed, b)
             self.channels[protocols.index(protocol)].append(channel)
-        #self.fig.context.flush()        
-        print(time.perf_counter()-start_time)
-        #self.fig.show()
-        
+        for ax in self.pltaxes:
+            ax.add_gridlines()
+
 # Housekeeping
         self.housekeeping = [[], [], [], [], []]
         for title, protocol, boardID, length, rate, numpoints, b_ind, b_mask, b_shift, *ttable in xl_sheet[ 'C'+getval('C5') : 'V'+getval('D5')]:
@@ -246,17 +250,18 @@ class Plotting(QWidget):
             self.housekeeping[protocols.index(protocol.value)].append(Housekeeping(boardID.value, length.value, rate.value, numpoints.value, b_ind.value, b_mask.value, b_shift.value, hkValues))
         self.win.hkWidget.show()
         self.win.gpsWidget.show()
-        #app.Canvas.on_close = lambda: print("hi")
-
-        #app.process_events()
+        print(time.perf_counter()-start_time)
 
     def add_map(self, map_file): 
         gpsmap = loadmat(map_file)
         latlim = gpsmap['latlim'][0]
         lonlim = gpsmap['lonlim'][0]
         mapdata = gpsmap['ZA']
-
-        image = scene.visuals.Image(mapdata, parent=self.gpsax2d.viewbox.scene, method='subdivide')
+        print(lonlim[0], latlim[0])
+        img_width, img_height = (lonlim[1]-lonlim[0])/mapdata.shape[1], (latlim[1]-latlim[0])/mapdata.shape[0]
+        image = scene.visuals.Image(mapdata, parent=self.gpsax2d.view.scene, method='subdivide')
+        image.transform = STTransform(scale=(img_width, img_height), translate=(lonlim[0], latlim[0]))
+        self.gpsax2d.view.camera.set_range(x=lonlim, y=latlim)
     def parse(self):
         mode=self.win.read_mode
         
@@ -310,30 +315,6 @@ class Plotting(QWidget):
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 1)],
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 0)]]
             
-            cur_time = time.perf_counter()
-            if (cur_time-timer > plt_hertz):
-                #print("Update")
-                timer = cur_time
-                do_update = True
-            else:
-                pass
-                #print("Skipped")          
-            
-            for chs, hks, minframes in zip(self.channels, self.housekeeping, protocol_minframes):
-                for ch in chs:
-                    ch.new_data(minframes)
-                    if do_update:
-                        ch.update()
-
-                for hk in hks:
-                    hk.new_data(minframes)
-                    if do_update:
-                        hk.update()
-                
-            app.process_events()
-
-            do_update = False
-            '''
             gps_raw_data = all_minframes[:, [6, 26, 46, 66]].flatten()
             gps_check = all_minframes[:, [7, 27, 47, 67]].flatten()
             gps_data = gps_raw_data[np.where(gps_check==128)]
@@ -359,14 +340,37 @@ class Plotting(QWidget):
             self.gps_pos_lat[:num_RV], self.gps_pos_lon[:num_RV], self.gps_pos_alt[:num_RV] = point_transformer.transform(*gps_pos_ecef, radians=False)
             self.gps_pos_lon = np.roll(self.gps_pos_lon, -num_RV)
             self.gps_pos_lat = np.roll(self.gps_pos_lat, -num_RV)
-            self.gps_points.set_data(self.gps_pos_lon, self.gps_pos_lat)
-            ''' 
+            
+            cur_time = time.perf_counter()
+            if (cur_time-timer > plt_hertz):
+                timer = cur_time
+                do_update = True
+            
+            for chs, hks, minframes in zip(self.channels, self.housekeeping, protocol_minframes):
+                for ch in chs:
+                    ch.new_data(minframes)
+                    if do_update:
+                        ch.update()
+
+                for hk in hks:
+                    hk.new_data(minframes)
+                    if do_update:
+                        hk.update()
+
+            if do_update:
+                self.gps_points.set_data(pos=np.transpose(np.array([self.gps_pos_lat, self.gps_pos_lon])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
+                
+            app.process_events()
+
+            do_update = False
+            
+
         print(f"Done : {time.perf_counter()-start_time}")
-        #self.moveToThread(self.win.mainThread)
         self.win.setupGroupBox.setEnabled(True)
         self.win.readStart.setText("Start")
         self.win.readStart.setStyleSheet("background-color: #e34040")
         self.win.readStart.setChecked(False)
+        self.win.plotHertzSpin.setEnabled(True)
+        self.win.plotHertzLabel.setEnabled(True)
         self.win.timer.stop()
-        
-        #self.finished.emit()
+ 

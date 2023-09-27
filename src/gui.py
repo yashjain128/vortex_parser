@@ -131,17 +131,8 @@ class Window(QMainWindow):
             self.plotHertzLabel.setDisabled(True)
             self.readStart.setStyleSheet("background-color: #29d97e")
             
-            self.plotThread = QtCore.QThread(parent=self)
-            #self.plotting.moveToThread(self.plotThread)
-
-            #self.plotThread.started.connect(self.plotting.parse)
-            #self.plotting.finished.connect(self.plotThread.quit)
-            #self.plotting.finished.connect(self.timer.stop)
-            #self.plotThread.finished.connect(self.plotThread.deleteLater)
-
             self.timer.start(1000)
 
-            #self.plotThread.start()
             self.plotting.parse()
         else:
             print("stopped")
