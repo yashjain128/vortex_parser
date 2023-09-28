@@ -1,7 +1,7 @@
-lib/~$SAILFormat.xlsx
 .vscode
 SatChecklist.txt
 src/tests/
 lib/~$Vortex127.xlsx
+src\__pycache__\
 Snapshots/
 todo.txt
