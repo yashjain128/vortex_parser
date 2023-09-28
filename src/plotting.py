@@ -189,15 +189,16 @@ class Plotting(QWidget):
         self.gpsax2d = self.fig[0, 0].configure2d(title="GPS position", 
                                                 xlabel="Longitude", 
                                                 ylabel="Latitude")
-        self.gpsax3d = self.fig[1, 0].configure2d(title="GPS position", 
+        self.gpsax3d = self.fig[1, 0].configure3d(title="GPS position", 
                                                 xlabel="Longitude", 
-                                                ylabel="Latitude")
+                                                ylabel="Latitude",
+                                                zlabel="Altitude")
         
         self.gps_pos_lat = np.zeros(25000, float)
         self.gps_pos_lon = np.zeros(25000, float)
         self.gps_pos_alt = np.zeros(25000, float)
         
-        self.gps_points = scene.Markers(pos=np.transpose(np.array([self.gps_pos_lat, self.gps_pos_lon])),face_color="#ff0000", edge_width=0, size=5, parent=self.gpsax2d.view.scene, antialias=False, symbol='s')
+        self.gps_points = scene.Markers(pos=np.transpose(np.array([self.gps_pos_lat, self.gps_pos_lon])),face_color="#ff0000", edge_width=0, size=5, parent=self.gpsax2d.plot_view.scene, antialias=False, symbol='s')
         
         xl_sheet = openpyxl.load_workbook(file_path, data_only=True).active
         getval = lambda c: str(xl_sheet[c].value)
@@ -253,15 +254,26 @@ class Plotting(QWidget):
         print(time.perf_counter()-start_time)
 
     def add_map(self, map_file): 
+        # Get data from .mat file
         gpsmap = loadmat(map_file)
         latlim = gpsmap['latlim'][0]
         lonlim = gpsmap['lonlim'][0]
         mapdata = gpsmap['ZA']
-        print(lonlim[0], latlim[0])
-        img_width, img_height = (lonlim[1]-lonlim[0])/mapdata.shape[1], (latlim[1]-latlim[0])/mapdata.shape[0]
-        image = scene.visuals.Image(mapdata, parent=self.gpsax2d.view.scene, method='subdivide')
-        image.transform = STTransform(scale=(img_width, img_height), translate=(lonlim[0], latlim[0]))
-        self.gpsax2d.view.camera.set_range(x=lonlim, y=latlim)
+
+        # plot and scale 2d map
+        map2d = scene.visuals.Image(mapdata, method='subdivide', parent=self.gpsax2d.plot_view.scene)
+        img_width, img_height = lonlim[1]-lonlim[0], latlim[1]-latlim[0]
+        transform2d = STTransform(scale=(img_width/mapdata.shape[1], img_height/mapdata.shape[0]), translate=(lonlim[0], latlim[0]))
+        map2d.transform = transform2d
+        self.gpsax2d.plot_view.camera.set_range(x=lonlim, y=latlim)
+
+        # plot and scale 3d map
+        transform3d = STTransform(scale=(1/mapdata.shape[1], 1/mapdata.shape[0]))
+        map3d = scene.visuals.Image(mapdata, method='subdivide', parent=self.gpsax3d.plot_view.scene )
+        map3d.transform = transform3d
+        self.gpsax3d.xaxis.domain = lonlim
+        self.gpsax3d.yaxis.domain = latlim
+
     def parse(self):
         mode=self.win.read_mode
         
