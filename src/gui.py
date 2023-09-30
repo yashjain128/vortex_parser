@@ -93,11 +93,11 @@ class Window(QMainWindow):
     
     
     def time_run(self):
-        self.read_time+=1
-        self.readTimeOutput.setText(str(timedelta(seconds=self.read_time)))
+        self.read_time+=0.1
+        self.readTimeOutput.setText(str(timedelta(seconds=int(self.read_time))))
         if self.do_write:
-            self.write_time+=1
-            self.writeTimeOutput.setText(str(timedelta(seconds=self.write_time)))
+            self.write_time+=0.1
+            self.writeTimeOutput.setText(str(timedelta(seconds=int(self.write_time))))
     def reset_read_time(self):
         self.read_time = 0
         self.readTimeOutput.setText(str(timedelta(0)))
@@ -131,7 +131,7 @@ class Window(QMainWindow):
             self.plotHertzLabel.setDisabled(True)
             self.readStart.setStyleSheet("background-color: #29d97e")
             
-            self.timer.start(1000)
+            self.timer.start(100)
 
             self.plotting.parse()
         else:

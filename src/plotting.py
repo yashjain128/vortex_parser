@@ -109,7 +109,10 @@ class Housekeeping:
         self.hkrange = min(10, inds.size)
 
     def update(self):
+        if self.hkrange==0:
+            return
         for edit, data_row in zip(self.hkvalues, self.data):
+            #print(">> ", data_row[:self.hkrange])
             if edit.isEnabled():
                 edit.setText(str(np.average(data_row[:self.hkrange])))
 
@@ -121,7 +124,7 @@ class Plotting(QWidget):
         self.gpsfig, self.pltfig = None, None
         self.widget_layout = QGridLayout()
         self.setLayout(self.widget_layout) 
-        self.setWindowTitle("Figure")
+        self.setWindowTitle("Figure 1")
 
         gpsGroupBox = QGroupBox("GPS")
         gpsLayout = QGridLayout()
@@ -204,14 +207,14 @@ class Plotting(QWidget):
         getval = lambda c: str(xl_sheet[c].value)
         self.show()
 
-# Graphs
+        # Graphs
         self.pltaxes = []        
         graph_arr = [[i]+list(map(lambda x:x.value, row)) for i, row in enumerate(xl_sheet[ 'C'+getval('C3'):'H'+getval('D3')])]
         for i, title, xlabel, ylabel, numpoints, ylim1, ylim2 in graph_arr:
             ax = self.fig[i%2, i//2+1].configure2d( title, xlabel, ylabel,(0, numpoints*plot_width), (ylim1, ylim2)) 
             self.pltaxes.append(ax)
 
-# Channels
+        # Channels
         self.channels = [[], [], [], [], []]
         channel_arr = [list(map(lambda x:x.value, row)) for row in xl_sheet[ 'C'+getval('C4') : 'O'+getval('D4')]];
         for graphn, color, protocol, signed, *b in channel_arr:
@@ -221,7 +224,7 @@ class Plotting(QWidget):
         for ax in self.pltaxes:
             ax.add_gridlines()
 
-# Housekeeping
+        # Housekeeping
         self.housekeeping = [[], [], [], [], []]
         for title, protocol, boardID, length, rate, numpoints, b_ind, b_mask, b_shift, *ttable in xl_sheet[ 'C'+getval('C5') : 'V'+getval('D5')]:
             hkGroupBox = QGroupBox(title.value)
@@ -357,7 +360,6 @@ class Plotting(QWidget):
             do_update = (cur_time-timer) > plt_hertz
             if (do_update):
                 timer = cur_time
-            
             for chs, hks, minframes in zip(self.channels, self.housekeeping, protocol_minframes):
                 for ch in chs:
                     ch.new_data(minframes)
@@ -372,9 +374,8 @@ class Plotting(QWidget):
             if do_update:
                 # update gps points
                 self.gps_points.set_data(pos=np.transpose(np.array([self.gps_pos_lat, self.gps_pos_lon])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
-                
             app.process_events()
-            
+        #print(all_minframes) 
 
         print(f"Done : {time.perf_counter()-start_time}")
         self.win.setupGroupBox.setEnabled(True)
