@@ -4,7 +4,7 @@ Module to handle plotting, housekeeping, and GPS
 Written by Yash Jain
 """
 
-import socket
+import socket, sys
 import time
 
 import numpy as np
@@ -277,31 +277,27 @@ class Plotting(QWidget):
         self.gpsax3d.xaxis.domain = lonlim
         self.gpsax3d.yaxis.domain = latlim
 
-    def parse(self):
-        mode=self.win.read_mode
-        
+    def parse(self, read_mode, read_file, udp_ip, udp_port): 
         plt_hertz=1/self.win.plotHertzSpin.value()
         timer = time.perf_counter()
         do_update = True
 
         read_file = None
         write_file = None
-        if mode == 0:
+        if read_mode == 0:
             read_file = open(self.win.read_file, "rb")
-        elif mode == 1:
-            udp_ip = self.win.hostInputLine.text()
-            port = int(self.win.portInputLine.text())
-
-            print(f"[Debug] Connected\nIP: {udp_ip}\n Port: {port}")    
+        elif read_mode == 1:
+            print(f"[Debug] Connected\nIP: {udp_ip}\n Port: {udp_port}")    
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
-            sock.bind(("", port)) 
+            sock.bind(("", udp_port)) 
 
-        start_time = time.perf_counter()
+        np.set_printoptions(threshold=sys.maxsize)
         self.run = True
+        start_time = time.perf_counter()
         while self.run:
-            if mode == 0:
+            if read_mode == 0:
                 raw_data = np.fromfile(read_file, dtype=np.uint8, count=MAX_READ_LENGTH)
-            elif mode == 1:
+            elif read_mode == 1:
                 soc_data = sock.recv(1024)
                 raw_data = np.frombuffer(soc_data, dtype=np.uint8)
                 
@@ -323,6 +319,7 @@ class Plotting(QWidget):
             inds[:-1] = inds[:-1][(np.diff(raw_data[inds + 6]) != 0)]
 
             all_minframes = raw_data[inds[:, None] + e].astype(int)
+            #print(all_minframes)
             protocol_minframes = [all_minframes,
                 all_minframes[np.where(all_minframes[:, 57] & 3 == 1)],
                 all_minframes[np.where(all_minframes[:, 57] & 3 == 2)],
@@ -375,14 +372,6 @@ class Plotting(QWidget):
                 # update gps points
                 self.gps_points.set_data(pos=np.transpose(np.array([self.gps_pos_lat, self.gps_pos_lon])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
             app.process_events()
-        #print(all_minframes) 
 
         print(f"Done : {time.perf_counter()-start_time}")
-        self.win.setupGroupBox.setEnabled(True)
-        self.win.readStart.setText("Start")
-        self.win.readStart.setStyleSheet("background-color: #e34040")
-        self.win.readStart.setChecked(False)
-        self.win.plotHertzSpin.setEnabled(True)
-        self.win.plotHertzLabel.setEnabled(True)
-        self.win.timer.stop()
  

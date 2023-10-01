@@ -15,7 +15,6 @@ from plotting import Plotting, app as plt_app
 
 class QSelectedGroupBox(QGroupBox): 
     clicked = QtCore.pyqtSignal(str, object)     
-
     def __init__(self, title, func): 
         super(QSelectedGroupBox, self).__init__(title) 
         self.func = func
@@ -23,7 +22,6 @@ class QSelectedGroupBox(QGroupBox):
         child = self.childAt(event.pos())
         if not child:
             self.func()
-            
         
 class Window(QMainWindow):
     def getFile(self, title, fdir, ftype):
@@ -35,18 +33,18 @@ class Window(QMainWindow):
         #self.statusLabel.setText("Ready")
         return None
    
-    def choose_recording(self):
+    def findRecording(self):
         self.read_file = self.getFile("Pick a udp recording", "", "UDP Files (*.udp; *.bin);;All files (*)")
         if self.read_file is not None:
             self.pickReadFileNameLabel.setText(basename(self.read_file))
 
-    def choose_map(self):
-        file_path = self.getFile("Pick a map file", "", "Mat Map Files (*.mat);;All files (*)") 
-        if file_path is not None:   
-            self.pickMapNameLabel.setText(basename(file_path))
-            self.plotting.add_map(file_path)
+    def findMap(self):
+        self.map_file = self.getFile("Pick a map file", "", "Mat Map Files (*.mat);;All files (*)") 
+        if self.map_file is not None:   
+            self.pickMapNameLabel.setText(basename(self.map_file))
+            self.plotting.add_map(self.map_file)
     
-    def pick_instr(self, n):
+    def pickInstr(self, n):
         print(n)
         if n==0:
             self.instr_file = None
@@ -91,18 +89,18 @@ class Window(QMainWindow):
             self.writeFileNameEdit.setEnabled(False) 
         self.write_file = open(self.dir+"/recordings/"+self.writeFileNameEdit.text()+".udp", "ab")
     
-    
     def time_run(self):
         self.read_time+=0.1
         self.readTimeOutput.setText(str(timedelta(seconds=int(self.read_time))))
         if self.do_write:
             self.write_time+=0.1
             self.writeTimeOutput.setText(str(timedelta(seconds=int(self.write_time))))
-    def reset_read_time(self):
+            
+    def time_read_reset(self):
         self.read_time = 0
         self.readTimeOutput.setText(str(timedelta(0)))
 
-    def reset_write_time(self):
+    def time_write_reset(self):
         self.write_time = 0
         self.writeTimeOutput.setText(str(timedelta(0)))
     
@@ -113,34 +111,38 @@ class Window(QMainWindow):
         else:
             self.hkCountUnit.setText("Counts")
 
-
     def toggle_parse(self):
         if self.readStart.isChecked():
             if self.read_mode==0 and self.read_file==None:
                 print("Please select a read file")
                 self.readStart.setChecked(False)
                 return
+
             elif self.read_mode==1 and self.portInputLine.text()=="":
                 print("No ip adress given")
                 self.readStart.setChecked(False)
                 return
             
             self.readStart.setText("Stop")
-            self.setupGroupBox.setDisabled(True)
-            self.plotHertzSpin.setDisabled(True)
-            self.plotHertzLabel.setDisabled(True)
             self.readStart.setStyleSheet("background-color: #29d97e")
-            
+            self.setupGroupBox.setDisabled(True)
             self.timer.start(100)
 
-            self.plotting.parse()
+            self.plotting.parse(self.read_mode, self.read_file, self.hostInputLine.text(), self.portInputLine.text())
+            
+            self.timer.stop()
+            self.readStart.setText("Start")
+            self.readStart.setStyleSheet("background-color: #e34040")
+            self.setupGroupBox.setEnabled(True)
+
+            self.readStart.setChecked(False)
         else:
-            print("stopped")
             self.plotting.run = False
 
+    # QMainWindow.closeEvent
     def closeEvent(self, close_msg):
-        pass
-        #plt_app.quit()
+        self.plotting.close()
+    
     def __init__(self):
         QMainWindow.__init__(self)
         self.setWindowIcon(QIcon('icon.png'))
@@ -148,10 +150,9 @@ class Window(QMainWindow):
 
         self.dir = dirname(dirname(abspath(__file__)))
 
-        self.plotThread = None
-        self.mainThread = QtCore.QCoreApplication.instance().thread()
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.time_run)
+
         self.read_mode = 0
         self.read_file = None
         self.read_time = 0
@@ -159,6 +160,8 @@ class Window(QMainWindow):
         self.do_write = False
         self.write_file = None
         self.write_time = 0
+
+        self.map_file = None
 
         self.instr_file = None
         self.search_dir = self.dir + "\\lib\\"
@@ -184,7 +187,7 @@ class Window(QMainWindow):
         self.pickInstrCombo.addItem("-- select file --")
         self.pickInstrCombo.addItems(map(basename, self.found_instr_files))
         self.pickInstrCombo.setCurrentIndex(0)
-        self.pickInstrCombo.currentIndexChanged.connect(self.pick_instr)
+        self.pickInstrCombo.currentIndexChanged.connect(self.pickInstr)
         self.pickInstrCombo.setLineEdit(self.pickInstrNameEdit)
         self.pickInstrNameEdit.setStyleSheet("background-color: white")
 
@@ -196,7 +199,7 @@ class Window(QMainWindow):
         self.pickMapLayout = QGridLayout()
         self.pickMapLabel = QLabel("Map File (.mat)")
         self.pickMapButton = QPushButton("...")
-        self.pickMapButton.clicked.connect(self.choose_map)
+        self.pickMapButton.clicked.connect(self.findMap)
         self.pickMapButton.setFixedWidth(24)
         self.pickMapNameLabel = QLabel("Pick a file")
         self.pickMapNameLabel.setStyleSheet("background-color: white")
@@ -216,7 +219,7 @@ class Window(QMainWindow):
         
         self.pickReadFileButton = QPushButton("...")
         self.pickReadFileButton.setFixedWidth(24)
-        self.pickReadFileButton.clicked.connect(self.choose_recording)
+        self.pickReadFileButton.clicked.connect(self.findRecording)
         self.pickReadFileNameLabel = QLabel("Pick a file")
         self.pickReadFileNameLabel.setStyleSheet("background-color: white")
 
@@ -308,24 +311,30 @@ class Window(QMainWindow):
         self.leftBox.addWidget(self.hklabel, 2, 0)
         self.leftBox.addWidget(self.hkCountUnit, 2, 1)
 
+
         # Right Box
         self.readTimeLabel = QLabel("Read Session Time")
         self.readTimeReset = QPushButton(u"\u27F3")
         self.readTimeReset.setFlat(True)
         self.readTimeReset.setFixedWidth(20)
-        self.readTimeReset.clicked.connect(self.reset_read_time)
+        self.readTimeReset.clicked.connect(self.time_read_reset)
+
         self.readTimeOutput = QLineEdit(text="0:00:00", alignment=QtCore.Qt.AlignRight)
         self.readTimeOutput.setReadOnly(True)
         self.readTimeOutput.setFixedWidth(100)
+
         self.writeTimeLabel = QLabel("Write Session Time")
-        self.writeTimeReset= QPushButton(u"\u27F3")
+        self.writeTimeReset = QPushButton(u"\u27F3")
         self.writeTimeReset.setFlat(True)
         self.writeTimeReset.setFixedWidth(20)
-        self.writeTimeReset.clicked.connect(self.reset_write_time)
+        self.writeTimeReset.clicked.connect(self.time_write_reset)
+        
         self.writeTimeOutput = QLineEdit(text="0:00:00", alignment=QtCore.Qt.AlignRight) 
         self.writeTimeOutput.setReadOnly(True)
         self.writeTimeOutput.setFixedWidth(100)
+
         self.writeFileNameLabel = QLabel("Write File Name")
+        
         self.writeFileNameEdit = QLineEdit("Recording"+datetime.today().strftime('%Y-%m-%d'))
         self.writeFileNameEdit.setFixedWidth(122)
 
@@ -341,6 +350,7 @@ class Window(QMainWindow):
         self.rightBox.addWidget(self.writeFileNameLabel, 2, 0)
         self.rightBox.addWidget(self.writeFileNameEdit, 2, 1, 1, 3)
 
+        #
         self.liveControlBox = QGridLayout()
         self.liveControlBox.setColumnStretch(0, 1)
         self.liveControlBox.setColumnStretch(1, 1)
