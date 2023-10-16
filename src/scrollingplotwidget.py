@@ -1,18 +1,13 @@
 import numpy as np
 
 from vispy import plot as plot, app
-from vispy.io import load_data_file
-
 from vispy import scene
-from vispy.io import read_mesh
-from vispy.geometry import MeshData
-from vispy.plot.plotwidget import PlotWidget
 
 class ScrollingPlotWidget(scene.Widget):
     """
-
+    Widget for 2d and 3d plots.
+    This widget is a container for a PlotWidget and a set of axes.
     """
-
     def __init__(self, *args, **kwargs):
         self.grid = None
         self.plot_grid = None
@@ -38,19 +33,6 @@ class ScrollingPlotWidget(scene.Widget):
         fg = "#000000"
         self.ylims = ylims
         self.xlims = xlims
-
-        #     c0        c1      c2      c3      c4               
-        #  r0 +---------+-------+-------+-------+---------+
-        #     |         |               | title |         |
-        #  r1 |         +-------+-------+-------+         |
-        #     |         | ylabel| yaxis |  view | padding |
-        #  r2 | padding +-------+-------+-------+         |
-        #     |         |               | xaxis |         |
-        #  r3 |         +-------+-------+-------+         |
-        #     |         |               | xlabel|         |
-        #  r4 |---------+-------+-------+-------+---------|
-        #     |                   padding                 |
-        #     +---------+-------+-------+-------+---------+
 
         # padding left
         padding_left = self.grid.add_widget(None, row=0, row_span=4, col=0)
@@ -115,6 +97,7 @@ class ScrollingPlotWidget(scene.Widget):
         self.yaxis.link_view(self.plot_view)
 
         return self
+
     def configure3d(self, title, xlabel, ylabel, zlabel, xlims=(0, 1), ylims=(0, 1), zlims=(0, 1) ):
 
         fg = "#000000"
@@ -169,10 +152,3 @@ class ScrollingPlotWidget(scene.Widget):
         self.view_grid = scene.visuals.GridLines(color=(0, 0, 0, 0.5))
         self.view_grid.set_gl_state('translucent')
         self.plot_view.add(self.view_grid)
-
-if __name__ == "__main__":
-    fig = plot.Fig(size=(800, 600))
-    fig._grid._default_class = ScrollingPlotWidget
-    ax = fig[0, 0].configure3d("title", "x", "y", "z" )
-    fig.show()
-    app.run()

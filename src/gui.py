@@ -2,7 +2,8 @@
 Module to handle GUI
 Written by Yash Jain
 """
-import sys, os
+import time
+import os
 from os.path import dirname, abspath, basename
 from datetime import datetime, timedelta
 
@@ -11,7 +12,7 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (QGridLayout, QGroupBox, QComboBox, QHBoxLayout, QFrame, QMainWindow,
                              QPushButton, QWidget, QLabel, QLineEdit, QFileDialog, QSpinBox)
 
-from plotting import Plotting, app as plt_app
+from plotting import Plotting
 
 class QSelectedGroupBox(QGroupBox): 
     clicked = QtCore.pyqtSignal(str, object)     
@@ -59,13 +60,17 @@ class Window(QMainWindow):
             self.change_instr(file_path)
         
     def change_instr(self, file_path):
-        if self.instr_file != file_path:
-            self.instr_file = file_path
-            self.pickInstrCombo.setEnabled(False)
-            self.pickInstrButton.setEnabled(False)
-            self.plotWidthSpin.setDisabled(True)
-            self.plotWidthLabel.setDisabled(True)
-            self.plotting.start_excel(self.instr_file)
+        if self.instr_file == file_path:
+            return
+
+        self.instr_file = file_path
+        self.pickInstrCombo.setEnabled(False)
+        self.pickInstrButton.setEnabled(False)
+        self.plotWidthSpin.setDisabled(True)
+        self.plotWidthLabel.setDisabled(True)
+        
+        start_time = time.perf_counter()
+        self.plotting.start_excel(self.instr_file, self.plotWidthSpin.value())
 
     def toggle_to_udp(self):
         self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}") 
@@ -90,11 +95,11 @@ class Window(QMainWindow):
         self.write_file = open(self.dir+"/recordings/"+self.writeFileNameEdit.text()+".udp", "ab")
     
     def time_run(self):
-        self.read_time+=0.1
-        self.readTimeOutput.setText(str(timedelta(seconds=int(self.read_time))))
+        self.read_time+=1
+        self.readTimeOutput.setText(str(timedelta(seconds=self.read_time)))
         if self.do_write:
-            self.write_time+=0.1
-            self.writeTimeOutput.setText(str(timedelta(seconds=int(self.write_time))))
+            self.write_time+=1
+            self.writeTimeOutput.setText(str(timedelta(seconds=self.write_time)))
             
     def time_read_reset(self):
         self.read_time = 0
@@ -126,7 +131,9 @@ class Window(QMainWindow):
             self.readStart.setText("Stop")
             self.readStart.setStyleSheet("background-color: #29d97e")
             self.setupGroupBox.setDisabled(True)
-            self.timer.start(100)
+            self.time_read_reset()
+            self.time_write_reset()
+            self.timer.start(1000)
 
             self.plotting.parse(self.read_mode, self.read_file, self.hostInputLine.text(), self.portInputLine.text())
             

@@ -58,17 +58,20 @@ gpsNames = ["Longitude (deg)", "Latitude (deg)", "Altitude (km)", "vEast (m/s)",
 
 protocols = ['all', 'odd frame', 'even frame', 'odd sfid', 'even sfid']
 
-class Channel():
-    def __init__(self, ax: ScrollingPlotWidget, color, signed, b):
-        self.ax = ax
-        self.color = color
+class Channel:
+    def __init__(self, ax, color, signed, b):
+        
         self.signed = signed
         self.datax = np.arange(ax.xlims[1])
         self.datay = np.zeros(ax.xlims[1])
-        self.line = scene.Markers(pos=np.transpose(np.array([self.datax, self.datay])), edge_width=0, size=1, face_color=self.color, antialias=False)
-        self.ax.add_line(self.line)
-        self.ylims = self.ax.ylims
         self.byte_info = [b[i:i+3] for i in range(0,9,3) if b[i]!=-1]
+
+        self.color = color
+        self.line = scene.Markers(pos=np.transpose(np.array([self.datax, self.datay])), edge_width=0, size=1, face_color=self.color, antialias=False)
+        ax.add_line(self.line)
+
+        self.xlims, self.ylims = ax.xlims, ax.ylims
+
     def new_data(self, minframes):
         l = len(minframes)
         self.datay[:l] = np.zeros(l)
@@ -82,11 +85,13 @@ class Channel():
             self.datay[:l] = self.datay[:l]+(self.datay[:l] >= self.ylims[1])*(2*self.ylims[0])
         self.datay = np.roll(self.datay, -l)
 
-    def update(self):
-        #print(self.data)
         data = np.transpose(np.array([self.datax, self.datay]))
         self.line.set_data(pos=data, edge_width=0, size=1, face_color=self.color)
-        
+
+    def reset(self):
+        pass
+        #self.datay = np.zeros(self.ax.xlims[1])
+        #self.line.set_data(pos=np.transpose(np.array([self.datax, self.datay])), edge_width=0, size=1, face_color=self.color
         
 class Housekeeping:
     def __init__(self, board_id, length, rate, numpoints, b_ind, b_mask, b_shift, hkvalues):
@@ -181,17 +186,19 @@ class Plotting(QWidget):
             layout.removeItem(item)
 
     
-    def start_excel(self, file_path):
-        plot_width = self.win.plotWidthSpin.value()
-         
-        start_time = time.perf_counter()
+    def start_excel(self, file_path, plot_width):
+
+        # Create a plotting figure and add it to the GUI
         self.fig = plot.Fig(size=(1200, 800), show=False)
         self.widget_layout.addWidget(self.fig.native)
+        # Set fig default class to a custom scrolling plot widget
         self.fig._grid._default_class = ScrollingPlotWidget
+        
         
         self.gpsax2d = self.fig[0, 0].configure2d(title="GPS position", 
                                                 xlabel="Longitude", 
                                                 ylabel="Latitude")
+
         self.gpsax3d = self.fig[1, 0].configure3d(title="GPS position", 
                                                 xlabel="Longitude", 
                                                 ylabel="Latitude",
@@ -254,7 +261,6 @@ class Plotting(QWidget):
             self.housekeeping[protocols.index(protocol.value)].append(Housekeeping(boardID.value, length.value, rate.value, numpoints.value, b_ind.value, b_mask.value, b_shift.value, hkValues))
         self.win.hkWidget.show()
         self.win.gpsWidget.show()
-        print(time.perf_counter()-start_time)
 
     def add_map(self, map_file): 
         # Get data from .mat file
@@ -278,7 +284,8 @@ class Plotting(QWidget):
         self.gpsax3d.yaxis.domain = latlim
 
     def parse(self, read_mode, read_file, udp_ip, udp_port): 
-        plt_hertz=1/self.win.plotHertzSpin.value()
+        plt_hertz=self.win.plotHertzSpin.value()
+        read_length = MAX_READ_LENGTH//plt_hertz
         timer = time.perf_counter()
         do_update = True
 
@@ -291,12 +298,11 @@ class Plotting(QWidget):
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
             sock.bind(("", udp_port)) 
 
-        np.set_printoptions(threshold=sys.maxsize)
         self.run = True
         start_time = time.perf_counter()
         while self.run:
             if read_mode == 0:
-                raw_data = np.fromfile(read_file, dtype=np.uint8, count=MAX_READ_LENGTH)
+                raw_data = np.fromfile(read_file, dtype=np.uint8, count=read_length)
             elif read_mode == 1:
                 soc_data = sock.recv(1024)
                 raw_data = np.frombuffer(soc_data, dtype=np.uint8)
@@ -353,25 +359,18 @@ class Plotting(QWidget):
             self.gps_pos_lat = np.roll(self.gps_pos_lat, -num_RV)
 
             # check if plt_hertz time has elapsed, set do_update to true 
-            cur_time = time.perf_counter()
-            do_update = (cur_time-timer) > plt_hertz
-            if (do_update):
-                timer = cur_time
             for chs, hks, minframes in zip(self.channels, self.housekeeping, protocol_minframes):
                 for ch in chs:
                     ch.new_data(minframes)
-                    if do_update:
-                        ch.update()
 
                 for hk in hks:
                     hk.new_data(minframes)
-                    if do_update:
-                        hk.update()
 
-            if do_update:
-                # update gps points
-                self.gps_points.set_data(pos=np.transpose(np.array([self.gps_pos_lat, self.gps_pos_lon])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
+            self.gps_points.set_data(pos=np.transpose(np.array([self.gps_pos_lat, self.gps_pos_lon])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
             app.process_events()
 
+            pause_time = max((1/plt_hertz) - (time.perf_counter()-start_time), 0) 
+            time.sleep(pause_time)
+            start_time = time.perf_counter()
         print(f"Done : {time.perf_counter()-start_time}")
  
