@@ -46,7 +46,6 @@ class Window(QMainWindow):
             self.plotting.add_map(self.map_file)
     
     def pickInstr(self, n):
-        print(n)
         if n==0:
             self.instr_file = None
             return

@@ -152,3 +152,6 @@ class ScrollingPlotWidget(scene.Widget):
         self.view_grid = scene.visuals.GridLines(color=(0, 0, 0, 0.5))
         self.view_grid.set_gl_state('translucent')
         self.plot_view.add(self.view_grid)
+    
+    def reset_bounds(self):
+        self.camera.set_range(x=self.xlims, y=self.ylims)

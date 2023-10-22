@@ -64,6 +64,7 @@ class Channel:
         self.signed = signed
         self.datax = np.arange(ax.xlims[1])
         self.datay = np.zeros(ax.xlims[1])
+        self.pltaxes = []        
         self.byte_info = [b[i:i+3] for i in range(0,9,3) if b[i]!=-1]
 
         self.color = color
@@ -89,9 +90,8 @@ class Channel:
         self.line.set_data(pos=data, edge_width=0, size=1, face_color=self.color)
 
     def reset(self):
-        pass
-        #self.datay = np.zeros(self.ax.xlims[1])
-        #self.line.set_data(pos=np.transpose(np.array([self.datax, self.datay])), edge_width=0, size=1, face_color=self.color
+        self.datay = np.zeros(self.xlims[1])
+        self.line.set_data(pos=np.transpose(np.array([self.datax, self.datay])), edge_width=0, size=1, face_color=self.color)
         
 class Housekeeping:
     def __init__(self, board_id, length, rate, numpoints, b_ind, b_mask, b_shift, hkvalues):
@@ -185,14 +185,30 @@ class Plotting(QWidget):
             # remove the item from layout
             layout.removeItem(item)
 
+    def on_key_press(self, event):
+        if (event.text=='\x12'): # When Ctrl+R is pressed reset the bounds of every axes
+            for ax in self.pltaxes:
+                ax.reset_bounds()
+            self.gpsax2d.reset_bounds()
     
+    def reset_channels(self):
+        for chs in self.channels:
+            for ch in chs:
+                ch.reset()
+
     def start_excel(self, file_path, plot_width):
 
         # Create a plotting figure and add it to the GUI
-        self.fig = plot.Fig(size=(1200, 800), show=False)
+        self.fig = plot.Fig(size=(1200, 800), show=False, keys=None)
+        
+        # Temporarily unfreeze the figure to add a key press event and set the default class to a custom scrolling plot widget
+        self.fig.unfreeze()
+        self.fig.on_key_press = self.on_key_press
+        self.fig._grid._default_class = ScrollingPlotWidget
+        self.fig.freeze()
+
         self.widget_layout.addWidget(self.fig.native)
         # Set fig default class to a custom scrolling plot widget
-        self.fig._grid._default_class = ScrollingPlotWidget
         
         
         self.gpsax2d = self.fig[0, 0].configure2d(title="GPS position", 
@@ -274,8 +290,9 @@ class Plotting(QWidget):
         img_width, img_height = lonlim[1]-lonlim[0], latlim[1]-latlim[0]
         transform2d = STTransform(scale=(img_width/mapdata.shape[1], img_height/mapdata.shape[0]), translate=(lonlim[0], latlim[0]))
         map2d.transform = transform2d
-        self.gpsax2d.plot_view.camera.set_range(x=lonlim, y=latlim)
-
+        self.gpsax2d.xlims = lonlim
+        self.gpsax2d.ylims = latlim
+        self.gpsax2d.reset_bounds()
         # plot and scale 3d map
         transform3d = STTransform(scale=(1/mapdata.shape[1], 1/mapdata.shape[0]))
         map3d = scene.visuals.Image(mapdata, method='subdivide', parent=self.gpsax3d.plot_view.scene )
@@ -298,6 +315,7 @@ class Plotting(QWidget):
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
             sock.bind(("", udp_port)) 
 
+        self.reset_channels()
         self.run = True
         start_time = time.perf_counter()
         while self.run:
