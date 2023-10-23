@@ -3,8 +3,7 @@ Module to handle plotting, housekeeping, and GPS
 
 Written by Yash Jain
 """
-
-import socket, sys
+import socket
 import time
 
 import numpy as np
@@ -14,7 +13,7 @@ from vispy.visuals.transforms import STTransform
 import pyproj
 
 from PyQt5.QtWidgets import QGridLayout, QGroupBox, QWidgetItem, QSpacerItem, QLabel, QLineEdit, QWidget
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from scipy.io import loadmat
 
 from scrollingplotwidget import ScrollingPlotWidget
@@ -113,11 +112,7 @@ class Housekeeping:
 
         self.hkrange = min(10, inds.size)
 
-    def update(self):
-        if self.hkrange==0:
-            return
         for edit, data_row in zip(self.hkvalues, self.data):
-            #print(">> ", data_row[:self.hkrange])
             if edit.isEnabled():
                 edit.setText(str(np.average(data_row[:self.hkrange])))
 
@@ -146,6 +141,7 @@ class Plotting(QWidget):
             gpsLayout.addWidget(gpsLabel, ind, 0)
             gpsLayout.addWidget(gpsValue, ind, 1)
             
+            gpsValues.append(gpsValue)
         gpsGroupBox.setLayout(gpsLayout)
 
         self.win.gpsLayout.addWidget(gpsGroupBox)
@@ -273,7 +269,6 @@ class Plotting(QWidget):
             hkGroupBox.setLayout(hkLayout)
 
             self.win.hkLayout.addWidget(hkGroupBox)
-            
             self.housekeeping[protocols.index(protocol.value)].append(Housekeeping(boardID.value, length.value, rate.value, numpoints.value, b_ind.value, b_mask.value, b_shift.value, hkValues))
         self.win.hkWidget.show()
         self.win.gpsWidget.show()
@@ -388,6 +383,7 @@ class Plotting(QWidget):
             app.process_events()
 
             pause_time = max((1/plt_hertz) - (time.perf_counter()-start_time), 0) 
+            # Change pause time with threading?
             time.sleep(pause_time)
             start_time = time.perf_counter()
         print(f"Done : {time.perf_counter()-start_time}")
