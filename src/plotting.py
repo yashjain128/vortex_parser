@@ -10,7 +10,8 @@ import numpy as np
 import openpyxl
 from vispy import scene, plot, app
 from vispy.visuals.transforms import STTransform
-import pyproj
+
+from pymap3d.ecef import ecef2geodetic, ecef2enuv
 
 from PyQt5.QtWidgets import QGridLayout, QGroupBox, QWidgetItem, QSpacerItem, QLabel, QLineEdit, QWidget
 from PyQt5.QtCore import Qt, QTimer
@@ -26,6 +27,9 @@ MAX_READ_LENGTH = PACKET_LENGTH * 5000
 
 RV_HEADER = [114, 86, 48, 50, 65]
 RV_LEN = 48
+
+# how many decimal places to round gps data
+DEC_PLACES = 3
 
 e = np.arange(MINFRAME_LEN)
 for i in range(0, MINFRAME_LEN, 4):
@@ -46,11 +50,12 @@ def find_RV(seq):
     check = candidates[:, np.newaxis] + np.arange(5)
     mask = np.all((np.take(seq, check) == rv_arr), axis=-1)
     return candidates[mask] 
-
+'''
 point_transformer = pyproj.Transformer.from_crs(
     {"proj": 'geocent', "ellps": 'WGS84', "datum": 'WGS84'},
     {"proj": 'latlong', "ellps": 'WGS84', "datum": 'WGS84'},
 )
+'''
 
 hkNames = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3", "VBat Mon", "Dig. Temp"]
 gpsNames = ["Longitude (deg)", "Latitude (deg)", "Altitude (km)", "vEast (m/s)", "vNorth (m/s)", "vUp (m/s)", "Horz. Speed (m/s)", "Num Sats"]
@@ -113,7 +118,9 @@ class Housekeeping:
         self.hkrange = min(10, inds.size)
 
         for edit, data_row in zip(self.hkvalues, self.data):
-            if edit.isEnabled():
+            if self.hkrange==0:
+                edit.setText("nan")
+            elif edit.isEnabled():
                 edit.setText(str(np.average(data_row[:self.hkrange])))
 
 class Plotting(QWidget):
@@ -128,7 +135,7 @@ class Plotting(QWidget):
 
         gpsGroupBox = QGroupBox("GPS")
         gpsLayout = QGridLayout()
-        gpsValues = []
+        self.gpsValues = []
         
         for ind, name in enumerate(gpsNames):
             
@@ -141,7 +148,7 @@ class Plotting(QWidget):
             gpsLayout.addWidget(gpsLabel, ind, 0)
             gpsLayout.addWidget(gpsValue, ind, 1)
             
-            gpsValues.append(gpsValue)
+            self.gpsValues.append(gpsValue)
         gpsGroupBox.setLayout(gpsLayout)
 
         self.win.gpsLayout.addWidget(gpsGroupBox)
@@ -162,7 +169,6 @@ class Plotting(QWidget):
         self.win.gpsWidget.hide()
         self.win.hkWidget.hide()
         
-
     def clear_layout(self, layout):    
         for i in reversed(range(layout.count())):
             item = layout.itemAt(i)
@@ -219,6 +225,8 @@ class Plotting(QWidget):
         self.gps_pos_lat = np.zeros(25000, float)
         self.gps_pos_lon = np.zeros(25000, float)
         self.gps_pos_alt = np.zeros(25000, float)
+
+        self.gps_num_sat = np.zeros(25000, int)
         
         self.gps_points = scene.Markers(pos=np.transpose(np.array([self.gps_pos_lat, self.gps_pos_lon])),face_color="#ff0000", edge_width=0, size=5, parent=self.gpsax2d.plot_view.scene, antialias=False, symbol='s')
         
@@ -345,31 +353,54 @@ class Plotting(QWidget):
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 1)],
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 0)]]
             
+
+            # Gps bytes are at 6, 26, 46, 66 when the next byte == 128
             gps_raw_data = all_minframes[:, [6, 26, 46, 66]].flatten()
             gps_check = all_minframes[:, [7, 27, 47, 67]].flatten()
             gps_data = gps_raw_data[np.where(gps_check==128)]
 
-            if len(gps_data)==0:
-                continue
-            gps_inds = find_RV(gps_data)
+            # Parse gps data when there are bytes available
+            if len(gps_data) != 0:
+                gps_inds = find_RV(gps_data)
 
-            if len(gps_data) - gps_inds[-1] < RV_LEN:
-                gps_inds = gps_inds[:-1]
+                if len(gps_data) - gps_inds[-1] < RV_LEN:
+                    gps_inds = gps_inds[:-1]
 
-            gpsmatrix = gps_data[np.add.outer(gps_inds, np.arange(48))].astype(np.uint64)
-            num_RV = np.shape(gpsmatrix)[0]
-            # Note skipped check sum
+                gpsmatrix = gps_data[np.add.outer(gps_inds, np.arange(48))].astype(np.uint64)
 
-            gps_pos_ecef = ((gpsmatrix[:, [12, 20, 28]] << 32) +
-                            (gpsmatrix[:, [11, 19, 27]] << 24) +
-                            (gpsmatrix[:, [10, 18, 26]] << 16) +
-                            (gpsmatrix[:, [9, 17, 25]] << 8) +
-                            (gpsmatrix[:, [16, 24, 32]]) -
-                            ((gpsmatrix[:, [12, 20, 28]]>=128)*(2**40))).transpose()/10000
+                # Number of rv packets
+                num_RV = np.shape(gpsmatrix)[0]
+                # Note skipped check sum
 
-            self.gps_pos_lat[:num_RV], self.gps_pos_lon[:num_RV], self.gps_pos_alt[:num_RV] = point_transformer.transform(*gps_pos_ecef, radians=False)
-            self.gps_pos_lon = np.roll(self.gps_pos_lon, -num_RV)
-            self.gps_pos_lat = np.roll(self.gps_pos_lat, -num_RV)
+                # Signed position data
+                gps_pos_ecef = (((gpsmatrix[:, [12, 20, 28]] << 32) |
+                                (gpsmatrix[:, [11, 19, 27]] << 24) |
+                                (gpsmatrix[:, [10, 18, 26]] << 16) |
+                                (gpsmatrix[:, [ 9, 17, 25]] <<  8) |
+                                (gpsmatrix[:, [16, 24, 32]])) - 
+                                ((gpsmatrix[:, [12, 20, 28]]>=128)*(1<<40))).transpose()/10000
+                
+                gps_vel_ecef = (((gpsmatrix[:, [37, 41, 45]] << 20) |
+                                 (gpsmatrix[:, [36, 40, 44]] << 12) |
+                                 (gpsmatrix[:, [35, 39, 43]] << 4) |
+                                 (gpsmatrix[:, [34, 38, 42]] >> 4)) - 
+                                 ((gpsmatrix[:, [37, 41, 45]]>=128)*(1<<28))).transpose()/10000
+
+                # Replace old data with new data from the start of the array
+                gps_pos_lat, gps_pos_lon,  gps_pos_alt = ecef2geodetic(*gps_pos_ecef)
+        
+                gps_vel_east, gps_vel_north, gps_vel_up = ecef2enuv(*gps_vel_ecef, gps_pos_lat, gps_pos_lon)
+                print(gps_vel_ecef)
+                self.gps_num_sat = gpsmatrix[:, 16] & 0b00011111 # 0001-1111 -> take 5 digits
+                #self.gps_num_sat = np.roll(self.gps_num_sat, -num_RV)
+                # Set the gps values to the values in the last rv packet
+                self.gpsValues[0].setText(f"{round(gps_pos_lat[-1], DEC_PLACES)}")
+                self.gpsValues[1].setText(f"{round(gps_pos_lon[-1], DEC_PLACES)}")
+                self.gpsValues[2].setText(f"{round(gps_pos_alt[-1], DEC_PLACES)}") 
+                self.gpsValues[3].setText(f"{round(gps_vel_east[-1], DEC_PLACES)}")
+                self.gpsValues[4].setText(f"{round(gps_vel_north[-1], DEC_PLACES)}")
+                self.gpsValues[5].setText(f"{round(gps_vel_up[-1], DEC_PLACES)}")
+                self.gpsValues[7].setText(f"{self.gps_num_sat[-1]}")
 
             # check if plt_hertz time has elapsed, set do_update to true 
             for chs, hks, minframes in zip(self.channels, self.housekeeping, protocol_minframes):
@@ -379,12 +410,13 @@ class Plotting(QWidget):
                 for hk in hks:
                     hk.new_data(minframes)
 
-            self.gps_points.set_data(pos=np.transpose(np.array([self.gps_pos_lat, self.gps_pos_lon])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
+            self.gps_points.set_data(pos=np.transpose(np.array([gps_pos_lat, gps_pos_lon])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
             app.process_events()
 
             pause_time = max((1/plt_hertz) - (time.perf_counter()-start_time), 0) 
             # Change pause time with threading?
             time.sleep(pause_time)
             start_time = time.perf_counter()
-        print(f"Done : {time.perf_counter()-start_time}")
+        print("Parsing Completed")
+        #print(f"Done : {time.perf_counter()-start_time}")
  

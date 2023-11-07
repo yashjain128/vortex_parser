@@ -7,10 +7,12 @@ import os
 from os.path import dirname, abspath, basename
 from datetime import datetime, timedelta
 
+from vispy import plot
+
 from PyQt5 import QtCore
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (QGridLayout, QGroupBox, QComboBox, QHBoxLayout, QFrame, QMainWindow,
-                             QPushButton, QWidget, QLabel, QLineEdit, QFileDialog, QSpinBox)
+                             QPushButton, QWidget, QLabel, QLineEdit, QFileDialog, QSpinBox, QDialog)
 
 from plotting import Plotting
 
@@ -68,7 +70,6 @@ class Window(QMainWindow):
         self.plotWidthSpin.setDisabled(True)
         self.plotWidthLabel.setDisabled(True)
         
-        start_time = time.perf_counter()
         self.plotting.start_excel(self.instr_file, self.plotWidthSpin.value())
 
     def toggle_to_udp(self):
