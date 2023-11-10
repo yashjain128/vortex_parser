@@ -7,7 +7,7 @@ import os
 from os.path import dirname, abspath, basename
 from datetime import datetime, timedelta
 
-from openpyxl import load_workbook
+from vispy import plot
 
 from PyQt5 import QtCore
 from PyQt5.QtGui import QIcon
@@ -70,36 +70,8 @@ class Window(QMainWindow):
         self.plotWidthSpin.setDisabled(True)
         self.plotWidthLabel.setDisabled(True)
         
-        
-        xl_sheet = load_workbook(file_path, data_only=True).active
-        getval = lambda c: str(xl_sheet[c].value)
+        self.plotting.start_excel(self.instr_file, self.plotWidthSpin.value())
 
-        graph_row_start, graph_row_end = getval("C3"), getval("D3")
-        print(graph_row_start, graph_row_end)
-        for row_num in range(int(graph_row_start), int(graph_row_end)+1):
-            row = []
-            row.append(getval("B"+str(row_num)))
-
-            i = 1
-
-            while row[-1] != "None":
-                row.append(getval(chr(ord("B")+i)+str(row_num)))
-                i += 1
-
-            # Remove last cell "None"
-            row = row[:-1]
-
-            if len(row) == 0:
-                continue
-            elif row[0][0] == '#':
-                print("create channel")
-            else:
-                plotting.add_graph(*row)
-                
-
-            print(row)
-        #self.plotting.start_excel(self.instr_file, self.plotWidthSpin.value())
-        print("done")
     def toggle_to_udp(self):
         self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}") 
         self.readFileBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #aaaaaa;}")  
@@ -203,9 +175,6 @@ class Window(QMainWindow):
         self.found_instr_files = []
 
         self.do_hkunits = True
-
-        self.plot_windows = {}
-
         for file in os.listdir(self.search_dir):
              if file.endswith(".xlsx"):
                 self.found_instr_files.append(self.search_dir + file)
@@ -420,3 +389,5 @@ class Window(QMainWindow):
         self.mainGrid.addWidget(self.hkWidget, 0, 1, 2, 1)
         self.mainGrid.addWidget(self.gpsWidget, 0, 2, 2, 1)
         self.central_widget.setLayout(self.mainGrid)
+
+        self.plotting = Plotting(self)

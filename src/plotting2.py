@@ -31,8 +31,6 @@ RV_LEN = 48
 # how many decimal places to round gps data
 DEC_PLACES = 3
 
-figures = {}
-
 e = np.arange(MINFRAME_LEN)
 for i in range(0, MINFRAME_LEN, 4):
     e[i:i+4] = e[i:i+4][::-1]
@@ -125,25 +123,6 @@ class Housekeeping:
             elif edit.isEnabled():
                 edit.setText(str(np.average(data_row[:self.hkrange])))
 
-def add_graph(figure, title, row, col, xlabel, ylabel, numpoints):
-
-    # Add figure if it does not exist already
-    if figure not in figures:
-        figures[figure] = plot.Fig(title=figure, show=False, keys=None)
-        fig = figures[figure]
-        
-        fig.unfreeze()
-        fig.on_key_press = self.on_key_press
-        fig._grid._default_class = ScrollingPlotWidget
-        fig.freeze()
-    
-    fig[row, col].configure2d(title)
-    
-
-
-
-
-
 class Plotting(QWidget):
     def __init__(self, win):
         QWidget.__init__(self)
@@ -183,6 +162,7 @@ class Plotting(QWidget):
         self.win.plotHertzLabel.setEnabled(True)
         self.win.pickInstrCombo.setCurrentIndex(0)
         self.win.instr_file = None
+
 
         self.clear_layout(self.win.hkLayout)
         self.clear_layout(self.widget_layout)
