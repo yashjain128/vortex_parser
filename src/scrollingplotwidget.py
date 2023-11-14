@@ -3,6 +3,7 @@ import numpy as np
 from vispy import plot as plot, app
 from vispy import scene
 
+from vispy.visuals.transforms import STTransform, MatrixTransform
 class ScrollingPlotWidget(scene.Widget):
     """
     Widget for 2d and 3d plots.
@@ -28,66 +29,83 @@ class ScrollingPlotWidget(scene.Widget):
         self.grid = self.add_grid(spacing=0, margin=10)
         
 
-    def configure2d(self, title, xlabel, ylabel, xlims=(0, 1), ylims=(0, 1)):
+    def configure2d(self, title, xlabel, ylabel, xlims=[0, 1], ylims=[-1, 1]):
 
         fg = "#000000"
-        self.ylims = ylims
-        self.xlims = xlims
+        self.xlims = np.array(xlims)
+        self.ylims = np.array(ylims)
 
         # padding left
-        padding_left = self.grid.add_widget(None, row=0, row_span=4, col=0)
-        padding_left.width_min = 20
-        padding_left.width_max = 30
+        padding_left = self.grid.add_widget(None, row=0, row_span=3, col=0)
+        padding_left.width_min = 15
+        padding_left.width_max = 25
 
         # padding right
-        padding_right = self.grid.add_widget(None, row=0, row_span=4, col=4)
-        padding_right.width_min = 20
-        padding_right.width_max = 30
+        padding_right = self.grid.add_widget(None, row=0, row_span=3, col=3)
+        padding_right.width_min = 15
+        padding_right.width_max = 25
 
         # padding down
-        padding_bottom = self.grid.add_widget(None, row=4, col=0, col_span=5)
-        padding_bottom.height_min = 20
-        padding_bottom.height_max = 20
+        padding_bottom = self.grid.add_widget(None, row=3, col=0, col_span=4)
+        padding_bottom.height_min = 15
+        padding_bottom.height_max = 15
 
         # row 0
         # title - column 4 to 5
         self.title = scene.Label(title, font_size=12, color="#000000")
-        self.title_widget = self.grid.add_widget(self.title, row=0, col=3)
-        self.title_widget.height_min = self.title_widget.height_max = 40    
+        self.title_widget = self.grid.add_widget(self.title, row=0, col=2)
+        self.title_widget.height_min = self.title_widget.height_max = 25
 
         # row 1
         # ylabel - column 1
         # yaxis - column 2
         # view - column 3
-        self.ylabel = scene.Label(ylabel, font_size=8, rotation=-90)
-        ylabel_widget = self.grid.add_widget(self.ylabel, row=1, col=1)
-        ylabel_widget.width_max = 1
+        ##self.ylabel = scene.Label(ylabel, font_size=8, rotation=-90)
+        ##ylabel_widget = self.grid.add_widget(self.ylabel, row=1, col=1)
+        ##ylabel_widget.width_max = 1
 
         self.yaxis = scene.AxisWidget(orientation='left',
                                       text_color=fg,
                                       axis_color=fg,
-                                      tick_color=fg)
-        yaxis_widget = self.grid.add_widget(self.yaxis, row=1, col=2)
+                                      tick_color=fg,
+                                      axis_width=2,
+                                      minor_tick_length=4, 
+                                      major_tick_length=6,
+                                      axis_font_size=8,
+                                      axis_label=ylabel,
+                                      axis_label_margin=14,
+                                      tick_label_margin=2)
+        yaxis_widget = self.grid.add_widget(self.yaxis, row=1, col=1)
         yaxis_widget.width_max = 20
+        #yaxis_widget.axis._text.transform = tr
+        #yaxis_widget.axis._text.center = (0.5, 0.5)
+        #yaxis_widget.axis._text._rotation = 3.14*(3/2)
 
         # row 2
         # xaxis - column 3
         self.xaxis = scene.AxisWidget(orientation='bottom', 
                                       text_color=fg,
                                       axis_color=fg,
-                                      tick_color=fg)
-        xaxis_widget = self.grid.add_widget(self.xaxis, row=2, col=3)
+                                      tick_color=fg,
+                                      minor_tick_length=2,
+                                      major_tick_length=5,
+                                      axis_font_size=8,
+                                      axis_label=xlabel,
+                                      axis_label_margin=20,
+                                      tick_label_margin=12)
+        xaxis_widget = self.grid.add_widget(self.xaxis, row=2, col=2)
         xaxis_widget.height_max = 20
+        #xaxis_widget.width_min = 100
 
 
         # row 3
         # xlabel - column 3
-        self.xlabel = scene.Label(xlabel, font_size=8)
-        xlabel_widget = self.grid.add_widget(self.xlabel, row=3, col=3)
-        xlabel_widget.height_max = 40
+        ##self.xlabel = scene.Label(xlabel, font_size=8)
+        ##xlabel_widget = self.grid.add_widget(self.xlabel, row=3, col=3)
+        ##xlabel_widget.height_max = 30
 
         # This needs to be added to the grid last (to fix #1742)
-        self.plot_view = self.grid.add_view(row=1, col=3, border_color='grey', bgcolor="#efefef") 
+        self.plot_view = self.grid.add_view(row=1, col=2, border_color='grey', bgcolor="#efefef") 
         self.plot_view.camera = 'panzoom'
         self.camera = self.plot_view.camera
         self.camera.set_range(x=self.xlims, y=self.ylims)
@@ -98,7 +116,7 @@ class ScrollingPlotWidget(scene.Widget):
 
         return self
 
-    def configure3d(self, title, xlabel, ylabel, zlabel, xlims=(0, 1), ylims=(0, 1), zlims=(0, 1) ):
+    def configure3d(self, title, xlabel, ylabel, zlabel, xlims=[0, 1], ylims=[0, 1], zlims=[0, 1]):
 
         fg = "#000000"
         self.plot_view = self.grid.add_view(row=1, col=1, border_color='grey', bgcolor="#efefef")

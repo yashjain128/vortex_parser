@@ -9,17 +9,14 @@ The program is split into a files: `main.py` , `gui.py` , `plotting.py`
 To simulate a connection: `sendUDP.py`  
 
 All of the data files are in the lib folder
+
 ## Setup
+python >= 3.10  
 Install the required libraries from the `requirements.txt` file through the command:  
 `$ pip install -r requirements.txt`
 
 Or download the libraries manually:   
-`numpy`
-`vispy`
-`openpyxl`
-`PyQt5`
-`scipy`
-`pyproj`
+`numpy, vispy, openpyxl, PyQt5, scipy, pymap3d`
 
 Run `main.py` from the source folder
 

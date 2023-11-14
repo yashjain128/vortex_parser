@@ -14,7 +14,7 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (QGridLayout, QGroupBox, QComboBox, QHBoxLayout, QFrame, QMainWindow,
                              QPushButton, QWidget, QLabel, QLineEdit, QFileDialog, QSpinBox, QDialog)
 
-from plotting import Plotting
+import plotting
 
 class QSelectedGroupBox(QGroupBox): 
     clicked = QtCore.pyqtSignal(str, object)     
@@ -52,38 +52,56 @@ class Window(QMainWindow):
             self.instr_file = None
             return
         file_path = self.found_instr_files[n-1]
-        self.change_instr(file_path)
+        self.changeInstr(file_path)
 
-    def find_instr(self):
+    def findInstr(self):
         file_path = self.getFile("Pick an instrument file", "", "Excel Files (*.xlsx);;All files (*)")
         if file_path is not None:
             self.pickInstrNameEdit.setText(file_path)
-            self.change_instr(file_path)
+            self.changeInstr(file_path)
         
-    def change_instr(self, file_path):
+    def changeInstr(self, file_path):
         if self.instr_file == file_path:
             return
 
         self.instr_file = file_path
+
+        # These cannot be changed after the plots are made
         self.pickInstrCombo.setEnabled(False)
         self.pickInstrButton.setEnabled(False)
         self.plotWidthSpin.setDisabled(True)
-        self.plotWidthLabel.setDisabled(True)
-        
+        self.plotWidthLabel.setDisabled(True) 
+
+        plotting.plot_width = self.plotWidthSpin.value()
         
         xl_sheet = load_workbook(file_path, data_only=True).active
         getval = lambda c: str(xl_sheet[c].value)
 
+        # Plots
         graph_row_start, graph_row_end = getval("C3"), getval("D3")
-        print(graph_row_start, graph_row_end)
         for row_num in range(int(graph_row_start), int(graph_row_end)+1):
-            row = []
-            row.append(getval("B"+str(row_num)))
-
+            row = [getval("B"+str(row_num))]
             i = 1
-
             while row[-1] != "None":
-                row.append(getval(chr(ord("B")+i)+str(row_num)))
+                row.append( getval(chr(ord("B")+i) + str(row_num)) )
+                i += 1
+            # Remove last cell "None"
+            row = row[:-1]
+
+            if len(row) == 0:
+                continue
+            elif row[0][0] == '#':
+                plotting.add_channel(*row)
+            else:
+                plotting.add_graph(*row)
+
+        # Housekeeping
+        hk_row_start, hk_row_end = getval("C4"), getval("D4")
+        for row_num in range(int(hk_row_start), int(hk_row_end)+1):
+            row = [getval("B"+str(row_num))]
+            i = 1
+            while row[-1] != "None":
+                row.append( getval(chr(ord("B")+i) + str(row_num)) )
                 i += 1
 
             # Remove last cell "None"
@@ -91,15 +109,48 @@ class Window(QMainWindow):
 
             if len(row) == 0:
                 continue
-            elif row[0][0] == '#':
-                print("create channel")
             else:
-                plotting.add_graph(*row)
+                print(*row)
+                hkValues = self.addHousekeeping(row[0], row[7:])
+                plotting.add_housekeeping(*row[1:7], hkValues)
+        
+        self.valuesWidget.show()
+        #self.plotting.start_excel(self.instr_file, self.plotWidthSpin.value())
+        plotting.finish_creating()
+        print("done")
+
+    def addHousekeeping(self, title, ttable): 
+        hkGroupBox = QGroupBox(title)
+        hkLayout = QGridLayout()
+        hkValues = [] # list of all edits
+        
+        # Add a label and edit for each gps value
+        for ind, name in enumerate(plotting.HK_NAMES):
+            hkLabel = QLabel(name)
+            hkValue = QLineEdit()
+
+            hkValue.setFixedWidth(50)
+            hkValue.setReadOnly(True)
+
+            if ttable[ind] == "False":
+                hkLabel.setEnabled(False)
+                hkValue.setEnabled(False)
+    
+            
+            hkLayout.addWidget(hkLabel, ind, 0)
+            hkLayout.addWidget(hkValue, ind, 1)
+            
+            hkValues.append(hkValue)
+        
+        hkGroupBox.setLayout(hkLayout)
+
+        self.valuesLayout.addWidget(hkGroupBox)
+        self.hkBoxes.append(hkGroupBox)
+
+        return hkValues
+
                 
 
-            print(row)
-        #self.plotting.start_excel(self.instr_file, self.plotWidthSpin.value())
-        print("done")
     def toggle_to_udp(self):
         self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #000000; font-weight: bold;}") 
         self.readFileBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #aaaaaa;}")  
@@ -163,7 +214,8 @@ class Window(QMainWindow):
             self.time_write_reset()
             self.timer.start(1000)
 
-            self.plotting.parse(self.read_mode, self.read_file, self.hostInputLine.text(), self.portInputLine.text())
+            plotting.parse(self.read_mode, self.plotHertzSpin.value(), self.read_file, self.hostInputLine.text(), self.portInputLine.text())
+            #self.read_mode, self.read_file, self.hostInputLine.text(), self.portInputLine.text())
             
             self.timer.stop()
             self.readStart.setText("Start")
@@ -172,11 +224,30 @@ class Window(QMainWindow):
 
             self.readStart.setChecked(False)
         else:
-            self.plotting.run = False
+            plotting.running = False
+    def close_plots(self):
+        # Reset GUI after closing plotting window
+        self.pickInstrCombo.setEnabled(True)
+        self.pickInstrButton.setEnabled(True)
+        self.plotWidthSpin.setEnabled(True)
+        self.plotWidthLabel.setEnabled(True)
+        self.pickInstrCombo.setCurrentIndex(0)
+        self.instr_file = None
+
+        for hkBox in self.hkBoxes:
+            layout = hkBox.layout()
+            while layout.count():
+                layout.takeAt(0).widget().deleteLater()
+            hkBox.deleteLater()
+
+        self.hkBoxes.clear()
+        #self.clear_layout(self.win.hkLayout)
+        #self.clear_layout(self.widget_layout)
+        self.valuesWidget.hide()
 
     # QMainWindow.closeEvent
     def closeEvent(self, close_msg):
-        self.plotting.close()
+        plotting.on_close(None)
     
     def __init__(self):
         QMainWindow.__init__(self)
@@ -205,6 +276,9 @@ class Window(QMainWindow):
         self.do_hkunits = True
 
         self.plot_windows = {}
+        self.hkBoxes = []
+
+        plotting.close_signal = self.close_plots
 
         for file in os.listdir(self.search_dir):
              if file.endswith(".xlsx"):
@@ -218,7 +292,7 @@ class Window(QMainWindow):
         self.pickInstrLabel = QLabel("Instrument Format (.xlsx)")
         self.pickInstrButton = QPushButton("...")
         self.pickInstrButton.setFixedWidth(24)
-        self.pickInstrButton.clicked.connect(self.find_instr)
+        self.pickInstrButton.clicked.connect(self.findInstr)
         self.pickInstrNameEdit = QLineEdit("Pick a file")
         self.pickInstrNameEdit.setReadOnly(True)
         self.pickInstrCombo = QComboBox()
@@ -388,35 +462,54 @@ class Window(QMainWindow):
         self.rightBox.addWidget(self.writeFileNameLabel, 2, 0)
         self.rightBox.addWidget(self.writeFileNameEdit, 2, 1, 1, 3)
 
-        #
+        # live control box
         self.liveControlBox = QGridLayout()
         self.liveControlBox.setColumnStretch(0, 1)
         self.liveControlBox.setColumnStretch(1, 1)
         self.liveControlBox.addLayout(self.leftBox, 0, 0)
         self.liveControlBox.addLayout(self.rightBox, 0, 1)
-
         self.liveControlGroupBox.setLayout(self.liveControlBox)
+
+        # Status Label [not working]
         self.statusLabel = QLabel("Select Mission")
          
- 
-        self.hkLayout = QHBoxLayout()
-        self.hkWidget = QFrame()
-        self.hkWidget.setLayout(self.hkLayout)
-        self.hkWidget.hide() 
+        # Widget to hide/show gps and housekeeping
+        self.valuesWidget = QFrame()
+        self.valuesLayout = QHBoxLayout()
+
+        # Gps values
+        self.gpsGroupBox = QGroupBox("GPS")
+        self.gpsLayout = QGridLayout()
+        self.gpsValues = [] # list of all edits
         
-        self.gpsLayout = QHBoxLayout()
-        self.gpsLayout.setAlignment(QtCore.Qt.AlignTop)
-        self.gpsWidget = QFrame()
-        self.gpsWidget.setLayout(self.gpsLayout)
-        self.gpsWidget.hide()
+        # Add a label and edit for each gps value
+        for ind, name in enumerate(plotting.GPS_NAMES):
+            gpsLabel = QLabel(name)
+            gpsValue = QLineEdit()
+
+            gpsValue.setFixedWidth(50)
+            gpsValue.setReadOnly(True)
+            
+            self.gpsLayout.addWidget(gpsLabel, ind, 0)
+            self.gpsLayout.addWidget(gpsValue, ind, 1)
+            
+            self.gpsValues.append(gpsValue)
+        
+        self.gpsGroupBox.setLayout(self.gpsLayout)
+
+        self.valuesLayout.addWidget(self.gpsGroupBox);
+        self.valuesWidget.setLayout(self.valuesLayout)
+
+
 
         self.central_widget = QWidget()               # define central widget
         self.setCentralWidget(self.central_widget)    # set QMainWindow.centralWidget
-        ### Add all 
+
+        ### Add all of the groupboxes
         self.mainGrid = QGridLayout()        
         self.mainGrid.addWidget(self.setupGroupBox, 0, 0)
         self.mainGrid.addWidget(self.liveControlGroupBox, 1, 0)
         #self.mainGrid.addWidget(self.statusLabel, 2, 0)
-        self.mainGrid.addWidget(self.hkWidget, 0, 1, 2, 1)
-        self.mainGrid.addWidget(self.gpsWidget, 0, 2, 2, 1)
+        self.valuesWidget.hide()
+        self.mainGrid.addWidget(self.valuesWidget, 0, 1, 2, 1)
         self.central_widget.setLayout(self.mainGrid)
