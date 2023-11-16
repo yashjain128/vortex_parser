@@ -66,7 +66,7 @@ class Window(QMainWindow):
 
         self.instr_file = file_path
 
-        # These cannot be changed after the plots are made
+        # The format and plot width cannot be changed after the plots are made
         self.pickInstrCombo.setEnabled(False)
         self.pickInstrButton.setEnabled(False)
         self.plotWidthSpin.setDisabled(True)
@@ -95,8 +95,25 @@ class Window(QMainWindow):
             else:
                 plotting.add_graph(*row)
 
+        # Map
+        '''
+        map_row_start, map_row_end = getval("C4"), getval("D4")
+        for row_num in range(int(map_row_start), int(map_row_end)+1):
+            row = [getval("B"+str(row_num))]
+            i = 1
+            while row[-1] != "None":
+                row.append( getval(chr(ord("B")+i) + str(row_num)) )
+                i += 1
+            # Remove last cell "None"
+            row = row[:-1]
+
+            if len(row) == 0:
+                continue
+            else:
+                plotting.add_map(*row)
+        '''
         # Housekeeping
-        hk_row_start, hk_row_end = getval("C4"), getval("D4")
+        hk_row_start, hk_row_end = getval("C5"), getval("D5")
         for row_num in range(int(hk_row_start), int(hk_row_end)+1):
             row = [getval("B"+str(row_num))]
             i = 1
@@ -110,14 +127,12 @@ class Window(QMainWindow):
             if len(row) == 0:
                 continue
             else:
-                print(*row)
                 hkValues = self.addHousekeeping(row[0], row[7:])
                 plotting.add_housekeeping(*row[1:7], hkValues)
         
         self.valuesWidget.show()
         #self.plotting.start_excel(self.instr_file, self.plotWidthSpin.value())
         plotting.finish_creating()
-        print("done")
 
     def addHousekeeping(self, title, ttable): 
         hkGroupBox = QGroupBox(title)

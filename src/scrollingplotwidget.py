@@ -37,8 +37,8 @@ class ScrollingPlotWidget(scene.Widget):
 
         # padding left
         padding_left = self.grid.add_widget(None, row=0, row_span=3, col=0)
-        padding_left.width_min = 15
-        padding_left.width_max = 25
+        padding_left.width_min = 5
+        padding_left.width_max = 10
 
         # padding right
         padding_right = self.grid.add_widget(None, row=0, row_span=3, col=3)
@@ -52,9 +52,10 @@ class ScrollingPlotWidget(scene.Widget):
 
         # row 0
         # title - column 4 to 5
-        self.title = scene.Label(title, font_size=12, color="#000000")
+        self.title = scene.Label(title, font_size=8, color="#000000")
         self.title_widget = self.grid.add_widget(self.title, row=0, col=2)
-        self.title_widget.height_min = self.title_widget.height_max = 25
+        self.title_widget.height_min = 35
+        self.title_widget.height_max = 35
 
         # row 1
         # ylabel - column 1
@@ -71,12 +72,15 @@ class ScrollingPlotWidget(scene.Widget):
                                       axis_width=2,
                                       minor_tick_length=4, 
                                       major_tick_length=6,
-                                      axis_font_size=8,
+                                      tick_font_size=6,
+                                      axis_font_size=6,
                                       axis_label=ylabel,
                                       axis_label_margin=14,
                                       tick_label_margin=2)
         yaxis_widget = self.grid.add_widget(self.yaxis, row=1, col=1)
-        yaxis_widget.width_max = 20
+        yaxis_widget.width_min = 20
+        yaxis_widget.width_max = 50
+        yaxis_widget.height_min = 50
         #yaxis_widget.axis._text.transform = tr
         #yaxis_widget.axis._text.center = (0.5, 0.5)
         #yaxis_widget.axis._text._rotation = 3.14*(3/2)
@@ -86,16 +90,17 @@ class ScrollingPlotWidget(scene.Widget):
         self.xaxis = scene.AxisWidget(orientation='bottom', 
                                       text_color=fg,
                                       axis_color=fg,
-                                      tick_color=fg,
-                                      minor_tick_length=2,
-                                      major_tick_length=5,
-                                      axis_font_size=8,
                                       axis_label=xlabel,
-                                      axis_label_margin=20,
-                                      tick_label_margin=12)
+                                      axis_font_size=6,
+                                      axis_label_margin=26,
+                                      tick_color=fg,
+                                      tick_font_size=6,
+                                      tick_label_margin=20,
+                                      minor_tick_length=2,
+                                      major_tick_length=5)
         xaxis_widget = self.grid.add_widget(self.xaxis, row=2, col=2)
-        xaxis_widget.height_max = 20
-        #xaxis_widget.width_min = 100
+        xaxis_widget.height_max = 30
+        xaxis_widget.width_min = 50
 
 
         # row 3
@@ -132,7 +137,7 @@ class ScrollingPlotWidget(scene.Widget):
         # padding left
         padding_left = self.grid.add_widget(None, row=1, row_span=2, col=0)
         padding_left.width_min = 20
-        padding_left.width_max = 30
+        padding_left.width_max = 50
 
         # padding right
         padding_right = self.grid.add_widget(None, row=1, row_span=2, col=2)
@@ -146,9 +151,10 @@ class ScrollingPlotWidget(scene.Widget):
 
         # row 0 
         # title - column 4 to 5
-        self.title = scene.Label(title, font_size=12, color=fg)
+        self.title = scene.Label(title, font_size=10, color=fg)
         self.title_widget = self.grid.add_widget(self.title, row=0, col=1)
-        self.title_widget.height_min = self.title_widget.height_max = 40    
+        self.title_widget.height_min = 30
+        self.title_widget.height_max = 30    
 
         self.xaxis = scene.Axis(pos=[[0, 0], [1, 0]], tick_direction=(0, -1), axis_width=0.1, tick_width=1, domain=xlims,
                                 axis_color=fg, tick_color=fg, text_color=fg, font_size=20, parent=self.plot_view.scene)
