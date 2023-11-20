@@ -33,25 +33,22 @@ plot_width = 5
 
 HK_NAMES = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3", "VBat Mon", "Dig. Temp"]
 GPS_NAMES = ["Longitude (deg)", "Latitude (deg)", "Altitude (km)", "vEast (m/s)", "vNorth (m/s)", "vUp (m/s)", "Horz. Speed (m/s)", "Num Sats"]
+GPS_NAMES_ID = ["lon", "lat", "alt", "veast", "vnorth", "vup", "shorz", "numsats"]
 
 PROTOCOLS = ['all', 'odd frame', 'even frame', 'odd sfid', 'even sfid']
 
 windows = []
 figures = {}
 plot_graphs = []
+map_graphs = []
+
 data_channels = {protocol:[] for protocol in PROTOCOLS} # Sort channels and hk by protocol
+gps2d_points = []
+gps3d_points = []
 
 close_signal = None
-# Allocate memory
-
-gps_pos_lat = np.zeros(25000, float)
-gps_pos_lon = np.zeros(25000, float)
-gps_pos_alt = np.zeros(25000, float)
-gps_vel_north = np.zeros(25000, float)
-gps_vel_east = np.zeros(25000, float)
-gps_vel_up = np.zeros(25000, float)
-gps_vel_horz = np.zeros(25000, float)
-gps_num_sat = np.zeros(25000, int)
+# Allocate memory for gps data
+gps_data = {gps_name:np.zeros(25000, float) for gps_name in GPS_NAMES_ID}
 
 running = True
 closing = False
@@ -158,6 +155,22 @@ class Housekeeping:
         for value in self.values:
             value.setText("")
 
+def get_fig(figure):
+    # Add figure if it does not exist already
+    if figure not in figures:
+        figures[figure] = plot.Fig(title=figure, show=False, keys=None)
+        fig = figures[figure]
+        
+        fig.unfreeze()
+        fig.on_key_press = on_key_press
+        fig._grid._default_class = ScrollingPlotWidget # Change the default class with cu
+        fig.native.closeEvent = on_close # Quick fix of Issue 1201 with vispy: https://github.com/vispy/vispy/issues/1201
+        fig.freeze()
+
+        return fig 
+    
+    else:
+        return figures[figure]
 def on_key_press(key):
     if (key.text=='\x12'): # When Ctrl+R is pressed reset the bounds of every axes
         for graph in plot_graphs:
@@ -185,20 +198,8 @@ def add_graph(figure, title, row, col, xlabel, ylabel, numpoints):
     row = int(row)
     col = int(col)
     numpoints = int(numpoints)
-    
-    # Add figure if it does not exist already
-    if figure not in figures:
-        figures[figure] = plot.Fig(title=figure, show=False, keys=None)
-        fig = figures[figure]
-        
-        fig.unfreeze()
-        fig.on_key_press = on_key_press
-        fig._grid._default_class = ScrollingPlotWidget # Change the default class with cu
-        fig.native.closeEvent = on_close # Quick fix of Issue 1201 with vispy: https://github.com/vispy/vispy/issues/1201
-        fig.freeze()
-    
-    else:
-        fig = figures[figure]
+
+    fig = get_fig(figure)
 
     plot_graphs.append(
         fig[int(row), int(col)].configure2d(title, xlabel, ylabel, xlims=[0, numpoints*plot_width])
@@ -218,6 +219,20 @@ def add_channel(color, protocol, signed, *byte_info):
     graph.ylims[1] = max(graph.ylims[1], channel.ylims[1])
     
     data_channels[protocol].append(channel)
+
+def add_map(figure, name, row, col, type):
+    fig = get_fig(figure)
+    if type=="2d":
+        fig[int(row), int(col)].configure2d(title=name, xlabel="Longitude", ylabel="Latitude")
+
+        gps2d_points.append(
+            scene.Markers(pos=np.transpose(np.array([gps_data["lat"], gps_data["lon"]])),face_color="#ff0000", edge_width=0, size=5, parent=fig[int(row), int(col)].plot_view.scene, antialias=False, symbol='s')
+        )
+    elif type=="3d":
+        # axis labels wont work yet
+        fig[int(row), int(col)].configure3d(title=name, xlabel="Longitude", ylabel="Latitude", zlabel="Altitude")    
+
+    map_graphs.append(fig[int(row), int(col)])
 
 def add_housekeeping(protocol, board_id, length, numpoints, byte_ind, bitmask, hkvalues):
     board_id = int(board_id)
@@ -241,8 +256,34 @@ def reset_graphs():
         for obj in obj_arr:
             obj.reset()
 
+def set_map(map_file):
+    gpsmap = loadmat(map_file)
+    latlim = gpsmap['latlim'][0]
+    lonlim = gpsmap['lonlim'][0]
+    mapdata = gpsmap['ZA']
+
+    for map_graph in map_graphs:
+        if map_graph.dimensions == 2:
+            # plot and scale 2d map
+            map2d = scene.visuals.Image(mapdata, method='subdivide', parent = map_graph.plot_view.scene)
+            img_width, img_height = lonlim[1]-lonlim[0], latlim[1]-latlim[0]
+            transform2d = STTransform(scale=(img_width/mapdata.shape[1], img_height/mapdata.shape[0]), translate=(lonlim[0], latlim[0]))
+            map2d.transform = transform2d
+            
+            map_graph.xlims = lonlim
+            map_graph.ylims = latlim
+            map_graph.reset_bounds()
+        
+        elif map_graph.dimensions == 3:
+            # plot and scale 3d map
+            transform3d = STTransform(scale=(1/mapdata.shape[1], 1/mapdata.shape[0]))
+            map3d = scene.visuals.Image(mapdata, method='subdivide', parent=map_graph.plot_view.scene )
+            map3d.transform = transform3d
+            map_graph.xaxis.domain = lonlim
+            map_graph.yaxis.domain = latlim
+
 def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
-        global running
+        global running, gps_data
         read_length = MAX_READ_LENGTH//plot_hertz
         timer = time.perf_counter()
         do_update = True
@@ -326,9 +367,11 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                                  ((gpsmatrix[:, [37, 41, 45]]>=128)*(1<<28))).transpose()/10000
 
                 # Replace old data with new data from the start of the array
-                gps_pos_lat, gps_pos_lon,  gps_pos_alt = ecef2geodetic(*gps_pos_ecef)
-        
-                gps_vel_east, gps_vel_north, gps_vel_up = ecef2enuv(*gps_vel_ecef, gps_pos_lat, gps_pos_lon)
+                gps_data["lat"][:num_RV], gps_pos_lon[:num_RV],  gps_data["alt"][:num_RV] = ecef2geodetic(*gps_pos_ecef)
+
+                gps_data["lat"] = np.roll(gps_data["lat"], -num_RV)
+                gps_pos_lon = np.roll(gps_pos_lon, -num_RV)
+                # gps_vel_east, gps_vel_north, gps_vel_up = ecef2enuv(*gps_vel_ecef, gps_pos_lat, gps_pos_lon)
                 #self.gps_num_sat = gpsmatrix[:, 16] & 0b00011111 # 0001-1111 -> take 5 digits
                 ##self.gps_num_sat = np.roll(self.gps_num_sat, -num_RV)
                 ## Set the gps values to the values in the last rv packet
@@ -345,8 +388,14 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
             for d, minframes in zip(data_channels.values(), protocol_minframes):
                 for i in d:
                     i.new_data(minframes)
+            
+            for gps_markers in gps2d_points:
+                print(gps_data["lat"], gps_pos_lon)
+                gps_markers.set_data(pos=np.transpose(np.array([gps_pos_lon, gps_data["lat"]])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
 
-            #self.gps_points.set_data(pos=np.transpose(np.array([gps_pos_lat, gps_pos_lon])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
+            #for gps_markers in gps3d_oints:
+            #    gps_markers.set_data(pos=np.transpose(np.array([gps_pos_lat, gps_pos_lon, gps_pos_alt])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
+
             app.process_events()
 
             pause_time = max((1/plot_hertz) - (time.perf_counter()-start_time), 0) 
@@ -525,9 +574,9 @@ class Plotting(QWidget):
         mapdata = gpsmap['ZA']
 
         # plot and scale 2d map
-        map2d = scene.visuals.Image(mapdata, method='subdivide', parent=self.gpsax2d.plot_view.scene)
+        map2d = scene.visuals.image(mapdata, method='subdivide', parent=self.gpsax2d.plot_view.scene)
         img_width, img_height = lonlim[1]-lonlim[0], latlim[1]-latlim[0]
-        transform2d = STTransform(scale=(img_width/mapdata.shape[1], img_height/mapdata.shape[0]), translate=(lonlim[0], latlim[0]))
+        transform2d = sttransform(scale=(img_width/mapdata.shape[1], img_height/mapdata.shape[0]), translate=(lonlim[0], latlim[0]))
         map2d.transform = transform2d
         self.gpsax2d.xlims = lonlim
         self.gpsax2d.ylims = latlim

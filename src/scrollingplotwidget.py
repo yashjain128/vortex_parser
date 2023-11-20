@@ -19,6 +19,7 @@ class ScrollingPlotWidget(scene.Widget):
         self.yaxis, self.xaxis, self.zaxis = None, None, None
         self.ylabel, self.xlabel, self.zlabel = None, None, None
         self.ylims, self.xlims, self.zlims = None, None, None
+        self.dimensions = None
         self.data = None
         self.view_grid = None
         self._configured = False
@@ -32,8 +33,10 @@ class ScrollingPlotWidget(scene.Widget):
     def configure2d(self, title, xlabel, ylabel, xlims=[0, 1], ylims=[-1, 1]):
 
         fg = "#000000"
-        self.xlims = np.array(xlims)
-        self.ylims = np.array(ylims)
+        self.xlims  = xlims
+        self.ylims = ylims
+
+        self.dimensions = 2
 
         # padding left
         padding_left = self.grid.add_widget(None, row=0, row_span=3, col=0)
@@ -123,11 +126,13 @@ class ScrollingPlotWidget(scene.Widget):
 
     def configure3d(self, title, xlabel, ylabel, zlabel, xlims=[0, 1], ylims=[0, 1], zlims=[0, 1]):
 
+        self.dimensions = 3
         fg = "#000000"
-        self.plot_view = self.grid.add_view(row=1, col=1, border_color='grey', bgcolor="#efefef")
+        self.plot_view = self.grid.add_view(row=1, col_span=3, col=1, border_color='grey', bgcolor="#efefef")
         self.plot_view.camera = 'turntable'
         self.plot_view.camera.center = (0.5, 0.5, 0.5)
-        #.center((0.5, 0.5, 0.5))
+        # self.plot_view.camera.fov = 80
+        #.center((0.5, 0.5, 0.5))   
         self.camera = self.plot_view.camera
         
         #return
@@ -137,7 +142,7 @@ class ScrollingPlotWidget(scene.Widget):
         # padding left
         padding_left = self.grid.add_widget(None, row=1, row_span=2, col=0)
         padding_left.width_min = 20
-        padding_left.width_max = 50
+        padding_left.width_max = 20
 
         # padding right
         padding_right = self.grid.add_widget(None, row=1, row_span=2, col=2)
@@ -151,8 +156,8 @@ class ScrollingPlotWidget(scene.Widget):
 
         # row 0 
         # title - column 4 to 5
-        self.title = scene.Label(title, font_size=10, color=fg)
-        self.title_widget = self.grid.add_widget(self.title, row=0, col=1)
+        self.title = scene.Label(title, font_size=8, color=fg)
+        self.title_widget = self.grid.add_widget(self.title, row=0, col=1, col_span=3)
         self.title_widget.height_min = 30
         self.title_widget.height_max = 30    
 

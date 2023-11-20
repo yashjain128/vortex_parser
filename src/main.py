@@ -11,7 +11,6 @@ from PyQt5.QtWidgets import QApplication
 
 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u'sailparser')
 
-
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     win = Window()

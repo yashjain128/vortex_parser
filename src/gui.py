@@ -45,7 +45,7 @@ class Window(QMainWindow):
         self.map_file = self.getFile("Pick a map file", "", "Mat Map Files (*.mat);;All files (*)") 
         if self.map_file is not None:   
             self.pickMapNameLabel.setText(basename(self.map_file))
-            self.plotting.add_map(self.map_file)
+            plotting.set_map(self.map_file)
     
     def pickInstr(self, n):
         if n==0:
@@ -96,7 +96,6 @@ class Window(QMainWindow):
                 plotting.add_graph(*row)
 
         # Map
-        '''
         map_row_start, map_row_end = getval("C4"), getval("D4")
         for row_num in range(int(map_row_start), int(map_row_end)+1):
             row = [getval("B"+str(row_num))]
@@ -111,7 +110,7 @@ class Window(QMainWindow):
                 continue
             else:
                 plotting.add_map(*row)
-        '''
+                
         # Housekeeping
         hk_row_start, hk_row_end = getval("C5"), getval("D5")
         for row_num in range(int(hk_row_start), int(hk_row_end)+1):
@@ -131,8 +130,11 @@ class Window(QMainWindow):
                 plotting.add_housekeeping(*row[1:7], hkValues)
         
         self.valuesWidget.show()
-        #self.plotting.start_excel(self.instr_file, self.plotWidthSpin.value())
         plotting.finish_creating()
+
+        for fig in plotting.figures.values():
+            fig.native.setWindowIcon(QIcon('icon.png'))
+
 
     def addHousekeeping(self, title, ttable): 
         hkGroupBox = QGroupBox(title)
@@ -495,7 +497,7 @@ class Window(QMainWindow):
         # Gps values
         self.gpsGroupBox = QGroupBox("GPS")
         self.gpsLayout = QGridLayout()
-        self.gpsValues = [] # list of all edits
+        plotting.gpsValues = [] # list of all edits
         
         # Add a label and edit for each gps value
         for ind, name in enumerate(plotting.GPS_NAMES):
@@ -508,7 +510,7 @@ class Window(QMainWindow):
             self.gpsLayout.addWidget(gpsLabel, ind, 0)
             self.gpsLayout.addWidget(gpsValue, ind, 1)
             
-            self.gpsValues.append(gpsValue)
+            plotting.gps_values.append(gpsValue)
         
         self.gpsGroupBox.setLayout(self.gpsLayout)
 
