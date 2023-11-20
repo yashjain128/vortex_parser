@@ -146,7 +146,7 @@ class Window(QMainWindow):
             hkLabel = QLabel(name)
             hkValue = QLineEdit()
 
-            hkValue.setFixedWidth(50)
+            hkValue.setFixedWidth(75)
             hkValue.setReadOnly(True)
 
             if ttable[ind] == "False":
@@ -504,7 +504,7 @@ class Window(QMainWindow):
             gpsLabel = QLabel(name)
             gpsValue = QLineEdit()
 
-            gpsValue.setFixedWidth(50)
+            gpsValue.setFixedWidth(75)
             gpsValue.setReadOnly(True)
             
             self.gpsLayout.addWidget(gpsLabel, ind, 0)

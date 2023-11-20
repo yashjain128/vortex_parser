@@ -49,6 +49,7 @@ gps3d_points = []
 close_signal = None
 # Allocate memory for gps data
 gps_data = {gps_name:np.zeros(25000, float) for gps_name in GPS_NAMES_ID}
+gps_values = []
 
 running = True
 closing = False
@@ -191,7 +192,9 @@ def on_close(event):
     figures.clear()
     plot_graphs.clear()
     [obj_arr.clear() for obj_arr in data_channels.values()] # Sort channels and hk by protocol
-
+    
+    [gps_data_arr.fill(0) for gps_data_arr in gps_data.values()]
+    
     closing = False
 
 def add_graph(figure, title, row, col, xlabel, ylabel, numpoints):
@@ -255,6 +258,7 @@ def reset_graphs():
     for obj_arr in data_channels.values():
         for obj in obj_arr:
             obj.reset()
+    
 
 def set_map(map_file):
     gpsmap = loadmat(map_file)
@@ -337,16 +341,16 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
             # Gps bytes are at 6, 26, 46, 66 when the next byte == 128
             gps_raw_data = all_minframes[:, [6, 26, 46, 66]].flatten()
             gps_check = all_minframes[:, [7, 27, 47, 67]].flatten()
-            gps_data = gps_raw_data[np.where(gps_check==128)]
+            gps_data_d = gps_raw_data[np.where(gps_check==128)]
 
             # Parse gps data when there are bytes available
-            if len(gps_data) != 0:
-                gps_inds = find_RV(gps_data)
+            if len(gps_data_d) != 0:
+                gps_inds = find_RV(gps_data_d)
 
-                if len(gps_data) - gps_inds[-1] < RV_LEN:
+                if len(gps_data_d) - gps_inds[-1] < RV_LEN:
                     gps_inds = gps_inds[:-1]
 
-                gpsmatrix = gps_data[np.add.outer(gps_inds, np.arange(48))].astype(np.uint64)
+                gpsmatrix = gps_data_d[np.add.outer(gps_inds, np.arange(48))].astype(np.uint64)
 
                 # Number of rv packets
                 num_RV = np.shape(gpsmatrix)[0]
@@ -366,21 +370,37 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                                  (gpsmatrix[:, [34, 38, 42]] >> 4)) - 
                                  ((gpsmatrix[:, [37, 41, 45]]>=128)*(1<<28))).transpose()/10000
 
+
                 # Replace old data with new data from the start of the array
-                gps_data["lat"][:num_RV], gps_pos_lon[:num_RV],  gps_data["alt"][:num_RV] = ecef2geodetic(*gps_pos_ecef)
+                gps_data["lat"][:num_RV], gps_data["lon"][:num_RV],  gps_data["alt"][:num_RV] = ecef2geodetic(*gps_pos_ecef) # Use ecef2geodetic to get position in lat, lon, alt
+                gps_data["veast"][:num_RV], gps_data["vnorth"][:num_RV], gps_data["vup"][:num_RV] = ecef2enuv(*gps_vel_ecef, gps_data["lat"][:num_RV], gps_data["lon"][:num_RV]) # Use ecef2enuv to get velocity in east, north, up 
+                gps_data["shorz"][:num_RV] = np.hypot(gps_data["veast"][:num_RV], gps_data["vnorth"][:num_RV]) # Get horizontal speed from the hypotonuse of east and north velocity
+                gps_data["numsats"][:num_RV] = gpsmatrix[:, 16] & 0b00011111 # 0001-1111 -> take 5 digits
 
                 gps_data["lat"] = np.roll(gps_data["lat"], -num_RV)
-                gps_pos_lon = np.roll(gps_pos_lon, -num_RV)
-                # gps_vel_east, gps_vel_north, gps_vel_up = ecef2enuv(*gps_vel_ecef, gps_pos_lat, gps_pos_lon)
-                #self.gps_num_sat = gpsmatrix[:, 16] & 0b00011111 # 0001-1111 -> take 5 digits
-                ##self.gps_num_sat = np.roll(self.gps_num_sat, -num_RV)
-                ## Set the gps values to the values in the last rv packet
-                #self.gpsValues[0].setText(f"{round(gps_pos_lat[-1], DEC_PLACES)}")
-                #self.gpsValues[1].setText(f"{round(gps_pos_lon[-1], DEC_PLACES)}")
-                #self.gpsValues[2].setText(f"{round(gps_pos_alt[-1], DEC_PLACES)}") 
-                #self.gpsValues[3].setText(f"{round(gps_vel_east[-1], DEC_PLACES)}")
-                #self.gpsValues[4].setText(f"{round(gps_vel_north[-1], DEC_PLACES)}")
-                #self.gpsValues[5].setText(f"{round(gps_vel_up[-1], DEC_PLACES)}")
+                gps_data["lon"] = np.roll(gps_data["lon"], -num_RV)
+                gps_data["alt"] = np.roll(gps_data["alt"], -num_RV)
+
+                gps_data["veast"] = np.roll(gps_data["veast"], -num_RV)
+                gps_data["vnorth"] = np.roll(gps_data["vnorth"], -num_RV)
+                gps_data["vup"] = np.roll(gps_data["vup"], -num_RV)
+                gps_data["shorz"] = np.roll(gps_data["shorz"], -num_RV)
+
+                gps_data["numsats"] = np.roll(gps_data["numsats"], -num_RV)
+
+                
+                gps_values[0].setText(f"{gps_data['lat'][-1]:.{DEC_PLACES}f}")
+                gps_values[1].setText(f"{gps_data['lon'][-1]:.{DEC_PLACES}f}")
+                gps_values[2].setText(f"{gps_data['alt'][-1]:.{DEC_PLACES}f}")
+
+                gps_values[3].setText(f"{gps_data['veast'][-1]:.{DEC_PLACES}f}")
+                gps_values[4].setText(f"{gps_data['vnorth'][-1]:.{DEC_PLACES}f}")
+                gps_values[5].setText(f"{gps_data['vup'][-1]:.{DEC_PLACES}f}")
+
+                gps_values[6].setText(f"{gps_data['shorz'][-1]:.{DEC_PLACES}f}")
+                gps_values[7].setText(f"{gps_data['numsats'][-1]}")
+
+                #gps_values[1].setText(f"{gps_data["lon"][-1]: DEC_PLACES}")
                 
                 #self.gpsValues[7].setText(f"{self.gps_num_sat[-1]}")
 
@@ -390,8 +410,7 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                     i.new_data(minframes)
             
             for gps_markers in gps2d_points:
-                print(gps_data["lat"], gps_pos_lon)
-                gps_markers.set_data(pos=np.transpose(np.array([gps_pos_lon, gps_data["lat"]])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
+                gps_markers.set_data(pos=np.transpose(np.array([gps_data["lon"], gps_data["lat"]])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
 
             #for gps_markers in gps3d_oints:
             #    gps_markers.set_data(pos=np.transpose(np.array([gps_pos_lat, gps_pos_lon, gps_pos_alt])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
@@ -402,306 +421,4 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
             # Change pause time with threading?
             time.sleep(pause_time)
             start_time = time.perf_counter()
-
-'''
-class Plotting(QWidget):
-    def __init__(self, win):
-        QWidget.__init__(self)
-        self.win = win
-        self.fig = None
-        self.gpsfig, self.pltfig = None, None
-        self.widget_layout = QGridLayout()
-        self.setLayout(self.widget_layout) 
-        self.setWindowTitle("Figure 1")
-
-        gpsGroupBox = QGroupBox("GPS")
-        gpsLayout = QGridLayout()
-        self.gpsValues = []
-        
-        for ind, name in enumerate(gpsNames):
             
-            gpsLabel = QLabel(name)
-            gpsValue = QLineEdit()
-
-            gpsValue.setFixedWidth(50)
-            gpsValue.setReadOnly(True)
-            
-            gpsLayout.addWidget(gpsLabel, ind, 0)
-            gpsLayout.addWidget(gpsValue, ind, 1)
-            
-            self.gpsValues.append(gpsValue)
-        gpsGroupBox.setLayout(gpsLayout)
-
-        self.win.gpsLayout.addWidget(gpsGroupBox)
-
-        self.channels = None
-    def closeEvent(self, event):
-        # Reset GUI after closing plotting window
-        self.win.pickInstrCombo.setEnabled(True)
-        self.win.pickInstrButton.setEnabled(True)
-        self.win.plotHertzSpin.setEnabled(True)
-        self.win.plotHertzLabel.setEnabled(True)
-        self.win.pickInstrCombo.setCurrentIndex(0)
-        self.win.instr_file = None
-
-        self.clear_layout(self.win.hkLayout)
-        self.clear_layout(self.widget_layout)
-        self.win.gpsWidget.hide()
-        self.win.hkWidget.hide()
-        
-    def clear_layout(self, layout):    
-        for i in reversed(range(layout.count())):
-            item = layout.itemAt(i)
-
-            if isinstance(item, QWidgetItem):
-                #print("widget" + str(item))
-                item.widget().close()
-
-            elif isinstance(item, QSpacerItem):
-                #print("spacer " + str(item))
-                pass
-            else:
-                #print("layout " + str(item))
-                self.clear_layout(item.layout())
-
-            # remove the item from layout
-            layout.removeItem(item)
-
-    def on_key_press(self, event):
-        if (event.text=='\x12'): # When Ctrl+R is pressed reset the bounds of every axes
-            for ax in self.pltaxes:
-                ax.reset_bounds()
-            self.gpsax2d.reset_bounds()
-    
-    def on_close():
-        print("HIT")
-
-    def reset_channels(self):
-        for chs in self.channels:
-            for ch in chs:
-                ch.reset()
-
-    def start_excel(self, file_path, plot_width):
-
-        # Create a plotting figure and add it to the GUI
-        self.fig = plot.Fig(size=(1200, 800), show=False, keys=None)
-        
-        # Temporarily unfreeze the figure to add a key press event and set the default class to a custom scrolling plot widget
-        self.fig.unfreeze()
-        self.fig.on_key_press = self.on_key_press
-        self.fig._grid._default_class = ScrollingPlotWidget
-        self.fig.freeze()
-
-        self.fig.show()
-        # self.widget_layout.addWidget(self.fig.native)
-        # Set fig default class to a custom scrolling plot widget
-        
-        
-        self.gpsax2d = self.fig[0, 0].configure2d(title="GPS position", 
-                                                  xlabel="Longitude", 
-                                                  ylabel="Latitude")
-
-        self.gpsax3d = self.fig[1, 0].configure3d(title="GPS position", 
-                                                xlabel="Longitude", 
-                                                ylabel="Latitude",
-                                                zlabel="Altitude")
-        
-        self.gps_pos_lat = np.zeros(25000, float)
-        self.gps_pos_lon = np.zeros(25000, float)
-        self.gps_pos_alt = np.zeros(25000, float)
-
-        self.gps_num_sat = np.zeros(25000, int)
-        
-        self.gps_points = scene.Markers(pos=np.transpose(np.array([self.gps_pos_lat, self.gps_pos_lon])),face_color="#ff0000", edge_width=0, size=5, parent=self.gpsax2d.plot_view.scene, antialias=False, symbol='s')
-        
-        xl_sheet = openpyxl.load_workbook(file_path, data_only=True).active
-        getval = lambda c: str(xl_sheet[c].value)
-        self.show()
-
-        # Graphs
-        self.pltaxes = []        
-        graph_arr = [[i]+list(map(lambda x:x.value, row)) for i, row in enumerate(xl_sheet[ 'C'+getval('C3'):'H'+getval('D3')])]
-        for i, title, xlabel, ylabel, numpoints, ylim1, ylim2 in graph_arr:
-            ax = self.fig[i%2, i//2+1].configure2d( title, xlabel, ylabel,(0, numpoints*plot_width), (ylim1, ylim2)) 
-            self.pltaxes.append(ax)
-
-        # Channels
-        self.channels = [[], [], [], [], []]
-        channel_arr = [list(map(lambda x:x.value, row)) for row in xl_sheet[ 'C'+getval('C4') : 'O'+getval('D4')]];
-        for graphn, color, protocol, signed, *b in channel_arr:
-            ax = self.pltaxes[graphn]
-            channel = Channel(ax, color, signed, b)
-            self.channels[protocols.index(protocol)].append(channel)
-        for ax in self.pltaxes:
-            ax.add_gridlines()
-
-        # Housekeeping
-        self.housekeeping = [[], [], [], [], []]
-        for title, protocol, boardID, length, rate, numpoints, b_ind, b_mask, b_shift, *ttable in xl_sheet[ 'C'+getval('C5') : 'V'+getval('D5')]:
-            hkGroupBox = QGroupBox(title.value)
-            hkLayout = QGridLayout()
-            hkLayout.setAlignment(Qt.AlignTop)
-            hkValues = []
-
-            for ind, do_hk in enumerate(ttable):
-                hkLabel = QLabel(hkNames[ind])
-                hkValue = QLineEdit()
-                
-                if not do_hk.value:
-                    hkLabel.setEnabled(False)
-                    hkValue.setEnabled(False)
-                
-                hkValue.setFixedWidth(50)
-                hkValue.setReadOnly(True)
-                
-                hkLayout.addWidget(hkLabel, ind, 0)
-                hkLayout.addWidget(hkValue, ind, 1)
-                
-                hkValues.append(hkValue)
-
-            hkGroupBox.setLayout(hkLayout)
-
-            self.win.hkLayout.addWidget(hkGroupBox)
-            self.housekeeping[protocols.index(protocol.value)].append(Housekeeping(boardID.value, length.value, rate.value, numpoints.value, b_ind.value, b_mask.value, b_shift.value, hkValues))
-        self.win.hkWidget.show()
-        self.win.gpsWidget.show()
-
-    def add_map(self, map_file): 
-        # Get data from .mat file
-        gpsmap = loadmat(map_file)
-        latlim = gpsmap['latlim'][0]
-        lonlim = gpsmap['lonlim'][0]
-        mapdata = gpsmap['ZA']
-
-        # plot and scale 2d map
-        map2d = scene.visuals.image(mapdata, method='subdivide', parent=self.gpsax2d.plot_view.scene)
-        img_width, img_height = lonlim[1]-lonlim[0], latlim[1]-latlim[0]
-        transform2d = sttransform(scale=(img_width/mapdata.shape[1], img_height/mapdata.shape[0]), translate=(lonlim[0], latlim[0]))
-        map2d.transform = transform2d
-        self.gpsax2d.xlims = lonlim
-        self.gpsax2d.ylims = latlim
-        self.gpsax2d.reset_bounds()
-        # plot and scale 3d map
-        transform3d = STTransform(scale=(1/mapdata.shape[1], 1/mapdata.shape[0]))
-        map3d = scene.visuals.Image(mapdata, method='subdivide', parent=self.gpsax3d.plot_view.scene )
-        map3d.transform = transform3d
-        self.gpsax3d.xaxis.domain = lonlim
-        self.gpsax3d.yaxis.domain = latlim
-
-    def parse(self, read_mode, read_file, udp_ip, udp_port): 
-        plt_hertz=self.win.plotHertzSpin.value()
-        read_length = MAX_READ_LENGTH//plt_hertz
-        timer = time.perf_counter()
-        do_update = True
-
-        read_file = None
-        write_file = None
-        if read_mode == 0:
-            read_file = open(self.win.read_file, "rb")
-        elif read_mode == 1:
-            print(f"[Debug] Connected\nIP: {udp_ip}\n Port: {udp_port}")    
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
-            sock.bind(("", udp_port)) 
-
-        self.reset_channels()
-        self.run = True
-        start_time = time.perf_counter()
-        while self.run:
-            if read_mode == 0:
-                raw_data = np.fromfile(read_file, dtype=np.uint8, count=read_length)
-            elif read_mode == 1:
-                soc_data = sock.recv(1024)
-                raw_data = np.frombuffer(soc_data, dtype=np.uint8)
-                
-            if len(raw_data) == 0:
-                break
-            
-            if self.win.do_write:
-                raw_data.tofile(self.win.write_file)
-            
-
-            inds = find_SYNC(raw_data)
-        
-            if len(inds)==0:
-                print("No valid sync frames")
-                continue
-
-            prev_ind = inds[-1]
-            inds = inds[:-1][(np.diff(inds) == PACKET_LENGTH)]
-            inds[:-1] = inds[:-1][(np.diff(raw_data[inds + 6]) != 0)]
-
-            all_minframes = raw_data[inds[:, None] + e].astype(int)
-            #print(all_minframes)
-            protocol_minframes = [all_minframes,
-                all_minframes[np.where(all_minframes[:, 57] & 3 == 1)],
-                all_minframes[np.where(all_minframes[:, 57] & 3 == 2)],
-                all_minframes[np.where(all_minframes[:, 5] % 2 == 1)],
-                all_minframes[np.where(all_minframes[:, 5] % 2 == 0)]]
-            
-
-            # Gps bytes are at 6, 26, 46, 66 when the next byte == 128
-            gps_raw_data = all_minframes[:, [6, 26, 46, 66]].flatten()
-            gps_check = all_minframes[:, [7, 27, 47, 67]].flatten()
-            gps_data = gps_raw_data[np.where(gps_check==128)]
-
-            # Parse gps data when there are bytes available
-            if len(gps_data) != 0:
-                gps_inds = find_RV(gps_data)
-
-                if len(gps_data) - gps_inds[-1] < RV_LEN:
-                    gps_inds = gps_inds[:-1]
-
-                gpsmatrix = gps_data[np.add.outer(gps_inds, np.arange(48))].astype(np.uint64)
-
-                # Number of rv packets
-                num_RV = np.shape(gpsmatrix)[0]
-                # Note skipped check sum
-
-                # Signed position data
-                gps_pos_ecef = (((gpsmatrix[:, [12, 20, 28]] << 32) |
-                                (gpsmatrix[:, [11, 19, 27]] << 24) |
-                                (gpsmatrix[:, [10, 18, 26]] << 16) |
-                                (gpsmatrix[:, [ 9, 17, 25]] <<  8) |
-                                (gpsmatrix[:, [16, 24, 32]])) - 
-                                ((gpsmatrix[:, [12, 20, 28]]>=128)*(1<<40))).transpose()/10000
-                
-                gps_vel_ecef = (((gpsmatrix[:, [37, 41, 45]] << 20) |
-                                 (gpsmatrix[:, [36, 40, 44]] << 12) |
-                                 (gpsmatrix[:, [35, 39, 43]] << 4) |
-                                 (gpsmatrix[:, [34, 38, 42]] >> 4)) - 
-                                 ((gpsmatrix[:, [37, 41, 45]]>=128)*(1<<28))).transpose()/10000
-
-                # Replace old data with new data from the start of the array
-                gps_pos_lat, gps_pos_lon,  gps_pos_alt = ecef2geodetic(*gps_pos_ecef)
-        
-                gps_vel_east, gps_vel_north, gps_vel_up = ecef2enuv(*gps_vel_ecef, gps_pos_lat, gps_pos_lon)
-                self.gps_num_sat = gpsmatrix[:, 16] & 0b00011111 # 0001-1111 -> take 5 digits
-                #self.gps_num_sat = np.roll(self.gps_num_sat, -num_RV)
-                # Set the gps values to the values in the last rv packet
-                self.gpsValues[0].setText(f"{round(gps_pos_lat[-1], DEC_PLACES)}")
-                self.gpsValues[1].setText(f"{round(gps_pos_lon[-1], DEC_PLACES)}")
-                self.gpsValues[2].setText(f"{round(gps_pos_alt[-1], DEC_PLACES)}") 
-                self.gpsValues[3].setText(f"{round(gps_vel_east[-1], DEC_PLACES)}")
-                self.gpsValues[4].setText(f"{round(gps_vel_north[-1], DEC_PLACES)}")
-                self.gpsValues[5].setText(f"{round(gps_vel_up[-1], DEC_PLACES)}")
-                
-                self.gpsValues[7].setText(f"{self.gps_num_sat[-1]}")
-
-            # check if plt_hertz time has elapsed, set do_update to true 
-            for chs, hks, minframes in zip(self.channels, self.housekeeping, protocol_minframes):
-                for ch in chs:
-                    ch.new_data(minframes)
-
-                for hk in hks:
-                    hk.new_data(minframes)
-
-            self.gps_points.set_data(pos=np.transpose(np.array([gps_pos_lat, gps_pos_lon])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
-            app.process_events()
-
-            pause_time = max((1/plt_hertz) - (time.perf_counter()-start_time), 0) 
-            # Change pause time with threading?
-            time.sleep(pause_time)
-            start_time = time.perf_counter()
-        print("Parsing Completed")
-        #print(f"Done : {time.perf_counter()-start_time}")
-''' 
