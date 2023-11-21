@@ -30,6 +30,9 @@ RV_LEN = 48
 DEC_PLACES = 3
 
 plot_width = 5
+do_hkunits = False
+do_write = False
+write_file = None
 
 HK_NAMES = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3", "VBat Mon", "Dig. Temp"]
 GPS_NAMES = ["Longitude (deg)", "Latitude (deg)", "Altitude (km)", "vEast (m/s)", "vNorth (m/s)", "vUp (m/s)", "Horz. Speed (m/s)", "Num Sats"]
@@ -49,7 +52,7 @@ gps3d_points = []
 close_signal = None
 # Allocate memory for gps data
 gps_data = {gps_name:np.zeros(25000, float) for gps_name in GPS_NAMES_ID}
-gps_values = []
+gps_values = {}
 
 running = True
 closing = False
@@ -78,8 +81,6 @@ class Channel:
     def __init__(self, color, signed, numpoints, *raw_byte_info):
         self.signed = signed
         self.color = color
-
-
 
         bit_num = 0
         self.byte_info = []
@@ -126,35 +127,59 @@ class Channel:
     def reset(self):
         self.datay = np.zeros(self.xlims[1])
         self.line.set_data(pos=np.transpose(np.array([self.datax, self.datay])), edge_width=0, size=1, face_color=self.color)
-        
+
 class Housekeeping:
     def __init__(self, board_id, length, numpoints, b_ind, b_mask, values):
-        self.board_id = board_id
-        self.length = length
-        self.indcol = np.arange(length)[:, None]
-        self.data = np.zeros((length, numpoints))
-        self.b_ind, self.b_mask = b_ind, b_mask
+
+        self.b_ind, self.b_mask = b_ind, b_mask 
+        self.rate = self.b_mask.bit_count()/8
+
+        if self.rate == 8/8: 
+            self.board_id = board_id
+        elif self.rate == 4/8:
+            self.board_id = [board_id>>4, board_id&0xF]
+        else:
+            raise ValueError("Unsupported housekeeping rate")
+        print(self.board_id)
+        self.numpoints = numpoints*self.rate
+        self.length = 11//self.rate
+
+        self.indcol = np.array(np.arange(11)//self.rate, dtype=np.uint8)[:, None]
+        self.data = np.zeros((11, numpoints))
         self.values = values
-        self.hkrange = 10
+        self.maxhkrange = 10
 
     def new_data(self, minframes):
         databuffer = minframes[:, self.b_ind] & self.b_mask
-        inds = np.where(databuffer == self.board_id)[0]
-        inds = inds[np.where(np.diff(inds) == self.length)[0]]
-        self.data = np.roll(self.data, inds.size, axis=1)
-        self.data[:, :inds.size] = databuffer[self.indcol + inds]
+        if self.rate == 8/8:
+            inds = np.where(databuffer == self.board_id)[0]
+            inds = inds[np.where(np.diff(inds) == self.length)[0]]
+            if inds.size != 0:
+                self.data[:, :inds.size] = databuffer[self.indcol + inds]
 
-        self.hkrange = min(10, inds.size)
+        elif self.rate == 4/8:
+            print(databuffer, databuffer.size)
+            inds = np.where( (databuffer==self.board_id[0])[:-1] & (databuffer==self.board_id[1])[1:])[0]
+            inds = inds[np.where(np.diff(inds) == self.length)[0]][:-1]
+            print(self.indcol)
+            self.data[:, :inds.size] = databuffer[self.indcol + inds]<<4 | databuffer[self.indcol+1 + inds]
 
+        self.data = np.roll(self.data, -inds.size, axis=1)
+        hkrange = min(self.maxhkrange, inds.size)
         for edit, data_row in zip(self.values, self.data):
-            if self.hkrange==0:
-                edit.setText("null")
-            elif edit.isEnabled():
-                edit.setText(str(np.average(data_row[:self.hkrange])))
+            if edit.isEnabled():
+                if hkrange==0:
+                    edit.setText("null")
+                else:
+                    edit.setText(str(np.average(data_row[hkrange:])))
 
     def reset(self):
         for value in self.values:
             value.setText("")
+
+def set_hkunits(hkunits):
+    global do_hkunits
+    do_hkunits = hkunits
 
 def get_fig(figure):
     # Add figure if it does not exist already
@@ -220,7 +245,6 @@ def add_channel(color, protocol, signed, *byte_info):
     # Graph must fit the channel data
     graph.ylims[0] = min(graph.ylims[0], channel.ylims[0])
     graph.ylims[1] = max(graph.ylims[1], channel.ylims[1])
-    
     data_channels[protocol].append(channel)
 
 def add_map(figure, name, row, col, type):
@@ -306,6 +330,7 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
         start_time = time.perf_counter()
 
         while running:
+            ############## Read Data #################
             if read_mode == 0:
                 raw_data = np.fromfile(read_file, dtype=np.uint8, count=read_length)
 
@@ -316,8 +341,8 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
             if len(raw_data) == 0:
                 break
             
-            #if self.win.do_write:
-            #    raw_data.tofile(self.win.write_file)
+            if do_write:
+                raw_data.tofile(write_file)
 
             inds = find_SYNC(raw_data)
         
@@ -337,7 +362,7 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 1)],
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 0)]]
             
-
+            ############## GPS #################
             # Gps bytes are at 6, 26, 46, 66 when the next byte == 128
             gps_raw_data = all_minframes[:, [6, 26, 46, 66]].flatten()
             gps_check = all_minframes[:, [7, 27, 47, 67]].flatten()
@@ -376,49 +401,33 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                 gps_data["veast"][:num_RV], gps_data["vnorth"][:num_RV], gps_data["vup"][:num_RV] = ecef2enuv(*gps_vel_ecef, gps_data["lat"][:num_RV], gps_data["lon"][:num_RV]) # Use ecef2enuv to get velocity in east, north, up 
                 gps_data["shorz"][:num_RV] = np.hypot(gps_data["veast"][:num_RV], gps_data["vnorth"][:num_RV]) # Get horizontal speed from the hypotonuse of east and north velocity
                 gps_data["numsats"][:num_RV] = gpsmatrix[:, 16] & 0b00011111 # 0001-1111 -> take 5 digits
-
-                gps_data["lat"] = np.roll(gps_data["lat"], -num_RV)
-                gps_data["lon"] = np.roll(gps_data["lon"], -num_RV)
-                gps_data["alt"] = np.roll(gps_data["alt"], -num_RV)
-
-                gps_data["veast"] = np.roll(gps_data["veast"], -num_RV)
-                gps_data["vnorth"] = np.roll(gps_data["vnorth"], -num_RV)
-                gps_data["vup"] = np.roll(gps_data["vup"], -num_RV)
-                gps_data["shorz"] = np.roll(gps_data["shorz"], -num_RV)
-
-                gps_data["numsats"] = np.roll(gps_data["numsats"], -num_RV)
-
                 
-                gps_values[0].setText(f"{gps_data['lat'][-1]:.{DEC_PLACES}f}")
-                gps_values[1].setText(f"{gps_data['lon'][-1]:.{DEC_PLACES}f}")
-                gps_values[2].setText(f"{gps_data['alt'][-1]:.{DEC_PLACES}f}")
+                # Shift data to the left by num_RV and set the last parsed value as text
+                for val in GPS_NAMES_ID:
+                    gps_data[val] = np.roll(gps_data[val], -num_RV)
+                    gps_values[val].setText(f"{gps_data[val][-1] : .{DEC_PLACES}f}")
 
-                gps_values[3].setText(f"{gps_data['veast'][-1]:.{DEC_PLACES}f}")
-                gps_values[4].setText(f"{gps_data['vnorth'][-1]:.{DEC_PLACES}f}")
-                gps_values[5].setText(f"{gps_data['vup'][-1]:.{DEC_PLACES}f}")
 
-                gps_values[6].setText(f"{gps_data['shorz'][-1]:.{DEC_PLACES}f}")
-                gps_values[7].setText(f"{gps_data['numsats'][-1]}")
+                for gps_markers in gps2d_points:
+                    gps_markers.set_data(pos=np.transpose(np.array([gps_data["lon"], gps_data["lat"]])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
 
-                #gps_values[1].setText(f"{gps_data["lon"][-1]: DEC_PLACES}")
-                
-                #self.gpsValues[7].setText(f"{self.gps_num_sat[-1]}")
+            # Housekeeping
 
             # check if plt_hertz time has elapsed, set do_update to true 
             for d, minframes in zip(data_channels.values(), protocol_minframes):
                 for i in d:
                     i.new_data(minframes)
-            
-            for gps_markers in gps2d_points:
-                gps_markers.set_data(pos=np.transpose(np.array([gps_data["lon"], gps_data["lat"]])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
 
             #for gps_markers in gps3d_oints:
             #    gps_markers.set_data(pos=np.transpose(np.array([gps_pos_lat, gps_pos_lon, gps_pos_alt])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
 
             app.process_events()
 
+            # do_hk counts here
+            if do_hkunits:
+                pass
+                
             pause_time = max((1/plot_hertz) - (time.perf_counter()-start_time), 0) 
             # Change pause time with threading?
             time.sleep(pause_time)
             start_time = time.perf_counter()
-            

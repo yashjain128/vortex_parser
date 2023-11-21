@@ -146,7 +146,7 @@ class Window(QMainWindow):
             hkLabel = QLabel(name)
             hkValue = QLineEdit()
 
-            hkValue.setFixedWidth(75)
+            hkValue.setFixedWidth(65)
             hkValue.setReadOnly(True)
 
             if ttable[ind] == "False":
@@ -187,8 +187,11 @@ class Window(QMainWindow):
         else:
             self.writeStart.setStyleSheet("background-color: #29d97e")
             self.do_write=True
-            self.writeFileNameEdit.setEnabled(False) 
+            self.writeFileNameEdit.setEnabled(False)
+         
         self.write_file = open(self.dir+"/recordings/"+self.writeFileNameEdit.text()+".udp", "ab")
+        plotting.do_write = self.do_write 
+        plotting.write_file = self.write_file
     
     def time_run(self):
         self.read_time+=1
@@ -207,6 +210,8 @@ class Window(QMainWindow):
     
     def toggle_hk(self):
         self.do_hkunits = not self.do_hkunits
+        plotting.set_hkunits(self.do_hkunits)
+
         if self.do_hkunits:
             self.hkCountUnit.setText("Units")
         else:
@@ -230,7 +235,7 @@ class Window(QMainWindow):
             self.time_read_reset()
             self.time_write_reset()
             self.timer.start(1000)
-
+            
             plotting.parse(self.read_mode, self.plotHertzSpin.value(), self.read_file, self.hostInputLine.text(), self.portInputLine.text())
             #self.read_mode, self.read_file, self.hostInputLine.text(), self.portInputLine.text())
             
@@ -500,17 +505,17 @@ class Window(QMainWindow):
         plotting.gpsValues = [] # list of all edits
         
         # Add a label and edit for each gps value
-        for ind, name in enumerate(plotting.GPS_NAMES):
+        for ind, (name, name_short) in enumerate(zip(plotting.GPS_NAMES, plotting.GPS_NAMES_ID)):
             gpsLabel = QLabel(name)
             gpsValue = QLineEdit()
 
-            gpsValue.setFixedWidth(75)
+            gpsValue.setFixedWidth(65)
             gpsValue.setReadOnly(True)
             
             self.gpsLayout.addWidget(gpsLabel, ind, 0)
             self.gpsLayout.addWidget(gpsValue, ind, 1)
             
-            plotting.gps_values.append(gpsValue)
+            plotting.gps_values[name_short] = gpsValue
         
         self.gpsGroupBox.setLayout(self.gpsLayout)
 

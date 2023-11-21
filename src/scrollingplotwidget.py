@@ -33,8 +33,8 @@ class ScrollingPlotWidget(scene.Widget):
     def configure2d(self, title, xlabel, ylabel, xlims=[0, 1], ylims=[-1, 1]):
 
         fg = "#000000"
-        self.xlims  = xlims
-        self.ylims = ylims
+        self.xlims = xlims[:]
+        self.ylims = ylims[:]
 
         self.dimensions = 2
 
