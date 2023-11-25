@@ -30,12 +30,9 @@ class QSelectedGroupBox(QGroupBox):
         
 class Window(QMainWindow):
     def getFile(self, title, fdir, ftype):
-        #self.statusLabel.setText("Pick a file")
         fname, ftypeused = QFileDialog.getOpenFileName(self, title, fdir, ftype)
         if fname:
-            #self.statusLabel.setText("Ready")
             return fname
-        #self.statusLabel.setText("Ready")
         return None
    
     def findRecording(self):
@@ -239,7 +236,6 @@ class Window(QMainWindow):
             self.timer.start(1000)
             
             plotting.parse(self.read_mode, self.plotHertzSpin.value(), self.read_file, self.hostInputLine.text(), self.portInputLine.text())
-            #self.read_mode, self.read_file, self.hostInputLine.text(), self.portInputLine.text())
             
             self.timer.stop()
             self.readStart.setText("Start")
@@ -486,7 +482,7 @@ class Window(QMainWindow):
         self.rightBox.addWidget(self.writeFileNameLabel, 2, 0)
         self.rightBox.addWidget(self.writeFileNameEdit, 2, 1, 1, 3)
 
-        # live control box
+        # Live control box
         self.liveControlBox = QGridLayout()
         self.liveControlBox.setColumnStretch(0, 1)
         self.liveControlBox.setColumnStretch(1, 1)
@@ -494,9 +490,6 @@ class Window(QMainWindow):
         self.liveControlBox.addLayout(self.rightBox, 0, 1)
         self.liveControlGroupBox.setLayout(self.liveControlBox)
 
-        # Status Label [not working]
-        self.statusLabel = QLabel("Select Mission")
-         
         # Widget to hide/show gps and housekeeping
         self.valuesWidget = QFrame()
         self.valuesLayout = QHBoxLayout()
@@ -533,7 +526,6 @@ class Window(QMainWindow):
         self.mainGrid = QGridLayout()        
         self.mainGrid.addWidget(self.setupGroupBox, 0, 0)
         self.mainGrid.addWidget(self.liveControlGroupBox, 1, 0)
-        #self.mainGrid.addWidget(self.statusLabel, 2, 0)
         self.valuesWidget.hide()
         self.mainGrid.addWidget(self.valuesWidget, 0, 1, 2, 1)
         self.central_widget.setLayout(self.mainGrid)
