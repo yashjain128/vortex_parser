@@ -210,6 +210,7 @@ class Window(QMainWindow):
     
     def toggle_hk(self):
         self.do_hkunits = not self.do_hkunits
+        print(f"set>>{self.do_hkunits}")
         plotting.set_hkunits(self.do_hkunits)
 
         if self.do_hkunits:
@@ -431,7 +432,7 @@ class Window(QMainWindow):
         self.writeStart.clicked.connect(self.toggle_write)
 
         self.hklabel = QLabel("Housekeeping counts/units ")
-        self.hkCountUnit = QPushButton("Counts")
+        self.hkCountUnit = QPushButton("Units")
         self.hkCountUnit.setFixedWidth(40)
         self.hkCountUnit.setStyleSheet("background-color: #9e9e9e")
         self.hkCountUnit.released.connect(self.toggle_hk)

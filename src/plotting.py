@@ -30,13 +30,17 @@ RV_LEN = 48
 DEC_PLACES = 3
 
 plot_width = 5
-do_hkunits = False
 do_write = False
 write_file = None
 
 HK_NAMES = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3", "VBat Mon", "Dig. Temp"]
 GPS_NAMES = ["Longitude (deg)", "Latitude (deg)", "Altitude (km)", "vEast (m/s)", "vNorth (m/s)", "vUp (m/s)", "Horz. Speed (m/s)", "Num Sats"]
 GPS_NAMES_ID = ["lon", "lat", "alt", "veast", "vnorth", "vup", "shorz", "numsats"]
+
+# Housekeeping coefficients and constants for units
+do_hkunits = True
+HK_COEF = np.array([1, -76.9231, -76.9231, -76.9231, -76.9231, 16, 6.15, 7.329, 3, 2, 2], dtype=np.float64) [:, None]
+HK_ADD = np.array([0, 202.54, 202.54, 202.54, 202.54, 0, -16.88, 0, 0, 0, 0], dtype=np.float64) [:, None]
 
 PROTOCOLS = ['all', 'odd frame', 'even frame', 'odd sfid', 'even sfid']
 
@@ -140,7 +144,6 @@ class Housekeeping:
             self.board_id = [board_id>>4, board_id&0xF]
         else:
             raise ValueError("Unsupported housekeeping rate")
-        print(self.board_id)
         self.numpoints = numpoints*self.rate
         self.length = 11//self.rate
 
@@ -158,21 +161,27 @@ class Housekeeping:
                 self.data[:, :inds.size] = databuffer[self.indcol + inds]
 
         elif self.rate == 4/8:
-            print(databuffer, databuffer.size)
             inds = np.where( (databuffer==self.board_id[0])[:-1] & (databuffer==self.board_id[1])[1:])[0]
             inds = inds[np.where(np.diff(inds) == self.length)[0]][:-1]
-            print(self.indcol)
             self.data[:, :inds.size] = databuffer[self.indcol + inds]<<4 | databuffer[self.indcol+1 + inds]
 
+        #if do_hkunits:
+        #    print(do_hkunits)
+        #    self.data[:, :inds.size] = HK_COEF * (self.data[:, :inds.size]*2.5/256 - 0.5*2.5/256) + HK_ADD
+        
         self.data = np.roll(self.data, -inds.size, axis=1)
         hkrange = min(self.maxhkrange, inds.size)
+
+
+
         for edit, data_row in zip(self.values, self.data):
             if edit.isEnabled():
                 if hkrange==0:
                     edit.setText("null")
                 else:
-                    edit.setText(str(np.average(data_row[hkrange:])))
+                    edit.setText(f"{np.average(data_row[hkrange:]): .{DEC_PLACES}f}")
 
+    
     def reset(self):
         for value in self.values:
             value.setText("")
@@ -248,16 +257,19 @@ def add_channel(color, protocol, signed, *byte_info):
     data_channels[protocol].append(channel)
 
 def add_map(figure, name, row, col, type):
+    row = int(row)
+    col = int(col)
     fig = get_fig(figure)
     if type=="2d":
-        fig[int(row), int(col)].configure2d(title=name, xlabel="Longitude", ylabel="Latitude")
+        fig[row, col].configure2d(title=name, xlabel="Longitude", ylabel="Latitude")
 
         gps2d_points.append(
             scene.Markers(pos=np.transpose(np.array([gps_data["lat"], gps_data["lon"]])),face_color="#ff0000", edge_width=0, size=5, parent=fig[int(row), int(col)].plot_view.scene, antialias=False, symbol='s')
         )
     elif type=="3d":
         # axis labels wont work yet
-        fig[int(row), int(col)].configure3d(title=name, xlabel="Longitude", ylabel="Latitude", zlabel="Altitude")    
+        fig[row, col].configure3d(title=name, xlabel="Longitude", ylabel="Latitude", zlabel="Altitude")    
+        fig[row, col].ylims = [0, 100] 
 
     map_graphs.append(fig[int(row), int(col)])
 
