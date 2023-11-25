@@ -36,12 +36,12 @@ class Window(QMainWindow):
         return None
    
     def findRecording(self):
-        self.read_file = self.getFile("Pick a udp recording", "", "UDP Files (*.udp; *.bin);;All files (*)")
+        self.read_file = self.getFile("Pick a udp recording", self.dir+"/recordings", "UDP Files (*.udp; *.bin);;All files (*)")
         if self.read_file is not None:
             self.pickReadFileNameLabel.setText(basename(self.read_file))
 
     def findMap(self):
-        self.map_file = self.getFile("Pick a map file", "", "Mat Map Files (*.mat);;All files (*)") 
+        self.map_file = self.getFile("Pick a map file", self.dir+"/lib", "Mat Map Files (*.mat);;All files (*)") 
         if self.map_file is not None:   
             self.pickMapNameLabel.setText(basename(self.map_file))
             plotting.set_map(self.map_file)
@@ -261,8 +261,6 @@ class Window(QMainWindow):
             hkBox.deleteLater()
 
         self.hkBoxes.clear()
-        #self.clear_layout(self.win.hkLayout)
-        #self.clear_layout(self.widget_layout)
         self.valuesWidget.hide()
 
     # QMainWindow.closeEvent
@@ -417,9 +415,7 @@ class Window(QMainWindow):
         self.readStart.setFixedWidth(40)
         self.readStart.setStyleSheet("background-color: #e34040")
         self.readStart.setCheckable(True)
-
         self.readStart.clicked.connect(self.toggle_parse)
-        # 29d97e
 
         self.writeStartLabel = QLabel("Write to file ")
         self.writeStart = QPushButton("Start")
