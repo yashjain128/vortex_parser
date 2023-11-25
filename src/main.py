@@ -1,8 +1,8 @@
 '''
-Created on 12.06.2018
+Creates the application and runs it.
 
-
-Written by Yash Jain
+Written for the Space and Atmospheric Instrumentation Laboratory
+by Yash Jain
 '''
 import sys, platform
 import ctypes

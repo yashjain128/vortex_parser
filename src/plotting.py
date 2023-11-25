@@ -1,13 +1,14 @@
 """
 Module to handle plotting, housekeeping, and GPS
 
-Written by Yash Jain
+Written for the Space and Atmospheric Instrumentation Laboratory
+by Yash Jain
 """
+import time, math
 import socket
-import time
-import math
 
 import numpy as np
+
 from vispy import scene, plot, app
 from vispy.visuals.transforms import STTransform, MatrixTransform
 
@@ -25,6 +26,7 @@ RV_LEN = 48
 
 # how many decimal places to round gps data
 DEC_PLACES = 3
+AVG_NUMPOINTS = 10
 
 plot_width = 5
 do_write = False
@@ -95,7 +97,6 @@ def get_fig(figure):
         fig.freeze()
 
         return fig 
-    
     else:
         return figures[figure]
 def on_key_press(key):
@@ -156,7 +157,7 @@ def add_map(figure, name, row, col, type):
         fig[row, col].configure2d(title=name, xlabel="Longitude", ylabel="Latitude")
 
         gps2d_points.append(
-            scene.Markers(pos=np.transpose(np.array([gps_data["lat"], gps_data["lon"]])),face_color="#ff0000", edge_width=0, size=5, parent=fig[int(row), int(col)].plot_view.scene, antialias=False, symbol='s')
+            scene.Markers(pos=np.transpose(np.array([gps_data["lat"], gps_data["lon"]])), face_color="#ff0000", edge_width=0, size=5, parent=fig[int(row), int(col)].plot_view.scene, antialias=False, symbol='s')
         )
     elif type=="3d":
         # axis labels wont work yet
@@ -408,7 +409,7 @@ class Housekeeping:
         self.indcol = np.array(np.arange(11)//self.rate, dtype=np.uint8)[:, None]
         self.data = np.zeros((11, self.numpoints))
         self.values = values
-        self.maxhkrange = 10
+        self.maxhkrange = AVG_NUMPOINTS
 
     def new_data(self, minframes):
         databuffer = minframes[:, self.b_ind] & self.b_mask
@@ -423,9 +424,9 @@ class Housekeeping:
             inds = inds[np.where(np.diff(inds) == self.length)[0]][:-1]
             self.data[:, :inds.size] = databuffer[self.indcol + inds]<<4 | databuffer[self.indcol+1 + inds]
 
-        #if do_hkunits:
-        #    print(do_hkunits)
-        #    self.data[:, :inds.size] = HK_COEF * (self.data[:, :inds.size]*2.5/256 - 0.5*2.5/256) + HK_ADD
+        if do_hkunits:
+            #print(do_hkunits)
+            self.data[:, :inds.size] = HK_COEF * (self.data[:, :inds.size]*2.5/256 - 0.5*2.5/256) + HK_ADD
         
         self.data = np.roll(self.data, -inds.size, axis=1)
         hkrange = min(self.maxhkrange, inds.size)
@@ -437,9 +438,8 @@ class Housekeeping:
                 if hkrange==0:
                     edit.setText("null")
                 else:
-                    edit.setText(f"{np.average(data_row[hkrange:]): .{DEC_PLACES}f}")
+                    edit.setText(f"{np.average(data_row[-hkrange:]): .{DEC_PLACES}f}")
 
-    
     def reset(self):
         self.data = np.zeros((11, self.numpoints))
         for value in self.values:

@@ -1,11 +1,15 @@
 """
 Module to handle GUI
-Written by Yash Jain
+
+Written for the Space and Atmospheric Instrumentation Laboratory
+by Yash Jain
 """
 import time
 import os
 from os.path import dirname, abspath, basename
 from datetime import datetime, timedelta
+
+import plotting
 
 from openpyxl import load_workbook
 
@@ -13,8 +17,6 @@ from PyQt5 import QtCore
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (QGridLayout, QGroupBox, QComboBox, QHBoxLayout, QFrame, QMainWindow,
                              QPushButton, QWidget, QLabel, QLineEdit, QFileDialog, QSpinBox, QDialog)
-
-import plotting
 
 class QSelectedGroupBox(QGroupBox): 
     clicked = QtCore.pyqtSignal(str, object)     
@@ -210,7 +212,6 @@ class Window(QMainWindow):
     
     def toggle_hk(self):
         self.do_hkunits = not self.do_hkunits
-        print(f"set>>{self.do_hkunits}")
         plotting.set_hkunits(self.do_hkunits)
 
         if self.do_hkunits:
