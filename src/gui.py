@@ -76,6 +76,10 @@ class Window(QMainWindow):
         xl_sheet = load_workbook(file_path, data_only=True).active
         getval = lambda c: str(xl_sheet[c].value)
 
+        # Bytes/second
+        bps = int(getval("G3"))
+        plotting.set_max_read_length(bps)
+
         # Plots
         graph_row_start, graph_row_end = getval("C3"), getval("D3")
         for row_num in range(int(graph_row_start), int(graph_row_end)+1):

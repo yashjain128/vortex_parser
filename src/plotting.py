@@ -18,8 +18,8 @@ from scipy.io import loadmat
 
 SYNC = [64, 40, 107, 254]
 MINFRAME_LEN = 2 * 40
-PACKET_LENGTH = MINFRAME_LEN + 44  
-MAX_READ_LENGTH = PACKET_LENGTH * 5000
+PACKET_LENGTH = MINFRAME_LEN + 44
+bytes_ps = PACKET_LENGTH * 5000
 
 RV_HEADER = [114, 86, 48, 50, 65]
 RV_LEN = 48
@@ -83,6 +83,10 @@ def find_RV(seq):
 def set_hkunits(hkunits):
     global do_hkunits
     do_hkunits = hkunits
+
+def set_max_read_length(max_read_length):
+    global bytes_ps
+    bytes_ps = max_read_length
 
 def get_fig(figure):
     # Add figure if it does not exist already
@@ -220,7 +224,7 @@ def set_map(map_file):
 
 def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
         global running, gps_data
-        read_length = MAX_READ_LENGTH//plot_hertz
+        read_length = bytes_ps//plot_hertz
         timer = time.perf_counter()
         do_update = True
 
