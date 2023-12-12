@@ -16,6 +16,7 @@ from pymap3d.ecef import ecef2geodetic, ecef2enuv
 
 from scipy.io import loadmat
 
+
 SYNC = [64, 40, 107, 254]
 MINFRAME_LEN = 2 * 40
 PACKET_LENGTH = MINFRAME_LEN + 44
@@ -32,14 +33,16 @@ plot_width = 5
 do_write = False
 write_file = None
 
-HK_NAMES = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3", "VBat Mon", "Dig. Temp"]
+HK_NAMES = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3 V", "VBat Mon"]
 GPS_NAMES = ["Longitude (deg)", "Latitude (deg)", "Altitude (km)", "vEast (m/s)", "vNorth (m/s)", "vUp (m/s)", "Horz. Speed (m/s)", "Num Sats"]
 GPS_NAMES_ID = ["lon", "lat", "alt", "veast", "vnorth", "vup", "shorz", "numsats"]
 
+acc_dig_temp = None
+acc_dig_temp_data = np.zeros(25000, np.uint32)
 # Housekeeping coefficients and constants for units
 do_hkunits = True
-HK_COEF = np.array([1, -76.9231, -76.9231, -76.9231, -76.9231, 16, 6.15, 7.329, 3, 2, 2], dtype=np.float64) [:, None]
-HK_ADD = np.array([0, 202.54, 202.54, 202.54, 202.54, 0, -16.88, 0, 0, 0, 0], dtype=np.float64) [:, None]
+HK_COEF = np.array([-76.9231    , -76.9231, -76.9231, -76.9231, 16, 6.15, 7.329, 3, 2, 2], dtype=np.float64) [:, None]
+HK_ADD = np.array([202.54, 202.54, 202.54, 202.54, 0, -16.88, 0, 0, 0, 0], dtype=np.float64) [:, None]
 
 PROTOCOLS = ['all', 'odd frame', 'even frame', 'odd sfid', 'even sfid']
 
@@ -52,6 +55,10 @@ data_channels = {protocol:[] for protocol in PROTOCOLS} # Sort channels and hk b
 gps2d_points = []
 gps3d_points = []
 
+latlim = [0, 1]
+lonlim = [0, 1]
+altlim = [0, 100]
+
 close_signal = None
 # Allocate memory for gps data
 gps_data = {gps_name:np.zeros(25000, float) for gps_name in GPS_NAMES_ID}
@@ -59,6 +66,7 @@ gps_values = {}
 
 running = True
 closing = False
+
 # Swap endianness: [3, 2, 1, 0, 7, 6, 5, 4 ... 79, 78, 77, 76]
 e = np.arange(MINFRAME_LEN)
 for i in range(0, MINFRAME_LEN, 4):
@@ -107,6 +115,10 @@ def on_key_press(key):
     if (key.text=='\x12'): # When Ctrl+R is pressed reset the bounds of every axes
         for graph in plot_graphs:
             graph.reset_bounds()
+        
+        for map2d in map_graphs:
+            if map2d.dimensions==2:
+                map2d.reset_bounds()
 
 def on_close(event):
     global running, closing, windows, figures, plot_graphs, data_channels, housekeeping_arr, channels_arr
@@ -127,6 +139,10 @@ def on_close(event):
     [gps_data_arr.fill(0) for gps_data_arr in gps_data.values()]
     
     closing = False
+
+def set_acc_dig_temp(val_edit):
+    global acc_dig_temp
+    acc_dig_temp = val_edit
 
 def add_graph(figure, title, row, col, xlabel, ylabel, numpoints):
     row = int(row)
@@ -166,9 +182,14 @@ def add_map(figure, name, row, col, type):
     elif type=="3d":
         # axis labels wont work yet
         fig[row, col].configure3d(title=name, xlabel="Longitude", ylabel="Latitude", zlabel="Altitude")    
-        fig[row, col].ylims = [0, 100] 
+        fig[row, col].zaxis.domain = [0, 100]
 
-    map_graphs.append(fig[int(row), int(col)])
+        gps3d_points.append(
+            scene.Markers(pos=np.transpose(np.array([gps_data["lat"], gps_data["lon"], gps_data["alt"]])), face_color="#ff0000", edge_width=0, size=5,
+                          parent=fig[row, col].plot_view.scene, antialias=False, symbol='s')
+        )
+
+    map_graphs.append(fig[row, col])
 
 def add_housekeeping(protocol, board_id, length, numpoints, byte_ind, bitmask, hkvalues):
     board_id = int(board_id)
@@ -197,6 +218,8 @@ def reset_graphs():
     
 
 def set_map(map_file):
+    global latlim, lonlim
+
     gpsmap = loadmat(map_file)
     latlim = gpsmap['latlim'][0]
     lonlim = gpsmap['lonlim'][0]
@@ -223,7 +246,7 @@ def set_map(map_file):
             map_graph.yaxis.domain = latlim
 
 def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
-        global running, gps_data
+        global running, gps_data, acc_dig_temp_data
         read_length = bytes_ps//plot_hertz
         timer = time.perf_counter()
         do_update = True
@@ -301,27 +324,36 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                                 (gpsmatrix[:, [16, 24, 32]])) - 
                                 ((gpsmatrix[:, [12, 20, 28]]>=128)*(1<<40))).transpose()/10000
                 
-                gps_vel_ecef = (((gpsmatrix[:, [37, 41, 45]] << 20) |
-                                 (gpsmatrix[:, [36, 40, 44]] << 12) |
-                                 (gpsmatrix[:, [35, 39, 43]] << 4) |
-                                 (gpsmatrix[:, [34, 38, 42]] >> 4)) - 
-                                 ((gpsmatrix[:, [37, 41, 45]]>=128)*(1<<28))).transpose()/10000
+                gps_vel_ecef = (((gpsmatrix[:, [36, 40, 44]] << 20) |
+                                 (gpsmatrix[:, [35, 39, 43]] << 12) |
+                                 (gpsmatrix[:, [34, 38, 42]] << 4) |
+                                 (gpsmatrix[:, [33, 37, 41]] >> 4)) - 
+                                 ((gpsmatrix[:, [36, 40, 44]]>=128)*(1<<28))).transpose()/10000
 
 
                 # Replace old data with new data from the start of the array
                 gps_data["lat"][:num_RV], gps_data["lon"][:num_RV],  gps_data["alt"][:num_RV] = ecef2geodetic(*gps_pos_ecef) # Use ecef2geodetic to get position in lat, lon, alt
+
                 gps_data["veast"][:num_RV], gps_data["vnorth"][:num_RV], gps_data["vup"][:num_RV] = ecef2enuv(*gps_vel_ecef, gps_data["lat"][:num_RV], gps_data["lon"][:num_RV]) # Use ecef2enuv to get velocity in east, north, up 
+
                 gps_data["shorz"][:num_RV] = np.hypot(gps_data["veast"][:num_RV], gps_data["vnorth"][:num_RV]) # Get horizontal speed from the hypotonuse of east and north velocity
-                gps_data["numsats"][:num_RV] = gpsmatrix[:, 16] & 0b00011111 # 0001-1111 -> take 5 digits
+
+                gps_data["numsats"][:num_RV] = gpsmatrix[:, 15] & 0b00011111 # 0001-1111 -> take 5 digits
                 
                 # Shift data to the left by num_RV and set the last parsed value as text
                 for val in GPS_NAMES_ID:
                     gps_data[val] = np.roll(gps_data[val], -num_RV)
-                    gps_values[val].setText(f"{gps_data[val][-1] : .{DEC_PLACES}f}")
+                    gps_values[val].setText(f"{gps_data[val][-1] : .{DEC_PLACES}f}") #.rstrip('0') to remove zeros
 
 
                 for gps_markers in gps2d_points:
                     gps_markers.set_data(pos=np.transpose(np.array([gps_data["lon"], gps_data["lat"]])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
+                
+                lon3d = (gps_data["lon"]-lonlim[0])/(lonlim[1]-lonlim[0])
+                lat3d = (gps_data["lat"]-latlim[0])/(latlim[1]-latlim[0])
+                alt3d = (gps_data["alt"]-altlim[0])/(altlim[1]-altlim[0])
+                for gps_markers in gps3d_points:
+                    gps_markers.set_data(pos=np.transpose(np.array([lon3d, lat3d, alt3d])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
 
             # Housekeeping
 
@@ -330,6 +362,12 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                 for i in d:
                     i.new_data(minframes)
 
+            # Update digital accelerometer temperature
+            acc_dig_temp_data[:len(protocol_minframes[2])] = ((protocol_minframes[2][:, 61]&15)<<8 | protocol_minframes[2][:, 62]).transpose()
+            acc_dig_temp_data = np.roll(acc_dig_temp_data, -len(protocol_minframes[2]))
+            print(acc_dig_temp)
+            if acc_dig_temp != None:
+                acc_dig_temp.setText(f"{acc_dig_temp_data[-1]: .{DEC_PLACES}f}")
             #for gps_markers in gps3d_oints:
             #    gps_markers.set_data(pos=np.transpose(np.array([gps_pos_lat, gps_pos_lon, gps_pos_alt])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
 
@@ -341,6 +379,7 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                 
             pause_time = max((1/plot_hertz) - (time.perf_counter()-start_time), 0) 
             # Change pause time with threading?
+            #QtCore.QTimer.singleShot(pause_time, lambda:num(i))
             time.sleep(pause_time)
             start_time = time.perf_counter()
 
@@ -410,8 +449,8 @@ class Housekeeping:
         self.numpoints = int(numpoints*self.rate)
         self.length = 11//self.rate
 
-        self.indcol = np.array(np.arange(11)//self.rate, dtype=np.uint8)[:, None]
-        self.data = np.zeros((11, self.numpoints))
+        self.indcol = np.array(np.arange(10)//self.rate, dtype=np.uint8)[:, None]+1
+        self.data = np.zeros((10, self.numpoints))
         self.values = values
         self.maxhkrange = AVG_NUMPOINTS
 
@@ -429,13 +468,11 @@ class Housekeeping:
             self.data[:, :inds.size] = databuffer[self.indcol + inds]<<4 | databuffer[self.indcol+1 + inds]
 
         if do_hkunits:
-            #print(do_hkunits)
             self.data[:, :inds.size] = HK_COEF * (self.data[:, :inds.size]*2.5/256 - 0.5*2.5/256) + HK_ADD
-        
+         
+
         self.data = np.roll(self.data, -inds.size, axis=1)
         hkrange = min(self.maxhkrange, inds.size)
-
-
 
         for edit, data_row in zip(self.values, self.data):
             if edit.isEnabled():
@@ -445,7 +482,7 @@ class Housekeeping:
                     edit.setText(f"{np.average(data_row[-hkrange:]): .{DEC_PLACES}f}")
 
     def reset(self):
-        self.data = np.zeros((11, self.numpoints))
+        self.data = np.zeros((10, self.numpoints))
         for value in self.values:
             value.setText("")
 

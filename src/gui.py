@@ -129,8 +129,13 @@ class Window(QMainWindow):
             if len(row) == 0:
                 continue
             else:
-                hkValues = self.addHousekeeping(row[0], row[7:])
-                plotting.add_housekeeping(*row[1:7], hkValues)
+                if (row[0]=="ACC"):
+                    hkValues = self.addHousekeeping(row[0], row[7:]+["True"], plotting.HK_NAMES+["Dig Temp"], )
+                    plotting.set_acc_dig_temp(hkValues[-1])
+                    plotting.add_housekeeping(*row[1:7], hkValues[:-1])
+                else:
+                    hkValues = self.addHousekeeping(row[0], row[7:], plotting.HK_NAMES)
+                    plotting.add_housekeeping(*row[1:7], hkValues)
         
         self.valuesWidget.show()
         plotting.finish_creating()
@@ -139,13 +144,13 @@ class Window(QMainWindow):
             fig.native.setWindowIcon(QIcon('icon.png'))
 
 
-    def addHousekeeping(self, title, ttable): 
+    def addHousekeeping(self, title, ttable, names): 
         hkGroupBox = QGroupBox(title)
         hkLayout = QGridLayout()
         hkValues = [] # list of all edits
         
         # Add a label and edit for each gps value
-        for ind, name in enumerate(plotting.HK_NAMES):
+        for ind, name in enumerate(names):
             hkLabel = QLabel(name)
             hkValue = QLineEdit()
 
