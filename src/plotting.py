@@ -365,7 +365,7 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
             # Update digital accelerometer temperature
             acc_dig_temp_data[:len(protocol_minframes[2])] = ((protocol_minframes[2][:, 61]&15)<<8 | protocol_minframes[2][:, 62]).transpose()
             acc_dig_temp_data = np.roll(acc_dig_temp_data, -len(protocol_minframes[2]))
-            print(acc_dig_temp)
+            
             if acc_dig_temp != None:
                 acc_dig_temp.setText(f"{acc_dig_temp_data[-1]: .{DEC_PLACES}f}")
             #for gps_markers in gps3d_oints:
