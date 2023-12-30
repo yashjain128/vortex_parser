@@ -5,8 +5,6 @@ f = open("recordings/VortEx_test01.udp", "rb")
 UDP_IP = "192.168.1.69"
 UDP_PORT = 5005
 
-    
-
 print("UDP target IP: %s" % UDP_IP)
 print("UDP target port: %s" % UDP_PORT)
 print("Ctrl + C to end\n...")

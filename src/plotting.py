@@ -245,6 +245,17 @@ def set_map(map_file):
             map_graph.xaxis.domain = lonlim
             map_graph.yaxis.domain = latlim
 
+def crc_16(arr):
+    crc = 0;
+    for i in arr:
+        crc ^= (i<<8);
+        for i in range(0,8):
+            crc <<= 1
+            if crc&(1<<16):
+                crc ^= int("1021", 16)
+        crc &= (1<<16)-1
+    return crc
+
 def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
         global running, gps_data, acc_dig_temp_data
         read_length = bytes_ps//plot_hertz
@@ -264,32 +275,38 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
         running = True
         start_time = time.perf_counter()
 
+        last_ind_arr=np.array([])
         while running:
             ############## Read Data #################
             if read_mode == 0:
-                raw_data = np.fromfile(read_file, dtype=np.uint8, count=read_length)
+                raw_data =  np.fromfile(read_file, dtype=np.uint8, count=read_length)
+                if len(raw_data) == 0:
+                    print("Finished reading file")
+                    running = False
+                    continue
 
             elif read_mode == 1:
                 soc_data = sock.recv(1024)
                 raw_data = np.frombuffer(soc_data, dtype=np.uint8)
                 
-            if len(raw_data) == 0:
-                break
+            
+
+            data_arr = np.concatenate((last_ind_arr, raw_data))
+
             
             if do_write:
                 raw_data.tofile(write_file)
 
-            inds = find_SYNC(raw_data)
-        
+            inds = find_SYNC(data_arr)
             if len(inds)==0:
                 print("No valid sync frames")
                 continue
 
-            prev_ind = inds[-1]
+            last_ind_arr = data_arr[inds[-1]:]
             inds = inds[:-1][(np.diff(inds) == PACKET_LENGTH)]
-            inds[:-1] = inds[:-1][(np.diff(raw_data[inds + 6]) != 0)]
+            inds[:-1] = inds[:-1][(np.diff(data_arr[inds + 6]) != 0)]
 
-            all_minframes = raw_data[inds[:, None] + e].astype(int)
+            all_minframes = data_arr[inds[:, None] + e].astype(int)
             #print(all_minframes)
             protocol_minframes = [all_minframes,
                 all_minframes[np.where(all_minframes[:, 57] & 3 == 1)],
@@ -297,25 +314,37 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 1)],
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 0)]]
             
-            ############## GPS #################
+            ################################### GPS ###################################
+
             # Gps bytes are at 6, 26, 46, 66 when the next byte == 128
             gps_raw_data = all_minframes[:, [6, 26, 46, 66]].flatten()
             gps_check = all_minframes[:, [7, 27, 47, 67]].flatten()
             gps_data_d = gps_raw_data[np.where(gps_check==128)]
-
-            # Parse gps data when there are bytes available
-            if len(gps_data_d) != 0:
+            
+            gps_inds = np.array([])
+            if len(gps_data_d)>0:
                 gps_inds = find_RV(gps_data_d)
-
+            
+            # Check if last index is inside the gps stream
+            #print(gps_inds[-1]+RV_LEN, len(gps_data_d))
+            if len(gps_inds)>0 and gps_inds[-1]+RV_LEN>len(gps_data_d):
+                gps_inds = gps_inds[:-1]
+            # Parse gps data when there are bytes available
+            if len(gps_inds)>0:
                 if len(gps_data_d) - gps_inds[-1] < RV_LEN:
                     gps_inds = gps_inds[:-1]
 
-                gpsmatrix = gps_data_d[np.add.outer(gps_inds, np.arange(48))].astype(np.uint64)
+                gpsmatrix = gps_data_d[np.add.outer(gps_inds, np.arange(48))].astype(np.uint32)
 
                 # Number of rv packets
                 num_RV = np.shape(gpsmatrix)[0]
                 # Note skipped check sum
-
+                # All rv_packets whose checksum is equal to the last 2 bytes
+                
+                valid_rv_packets = np.zeros(num_RV, dtype=bool);
+                for i in range(num_RV):
+                    valid_rv_packets[i] = crc_16(gpsmatrix[i,:-3]) == (gpsmatrix[i, -2]<<8) | gpsmatrix[i, -3]
+                gpsmatrix = gpsmatrix[np.where(valid_rv_packets)].astype(np.uint64)
                 # Signed position data
                 gps_pos_ecef = (((gpsmatrix[:, [12, 20, 28]] << 32) |
                                 (gpsmatrix[:, [11, 19, 27]] << 24) |
@@ -326,8 +355,8 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                 
                 gps_vel_ecef = (((gpsmatrix[:, [36, 40, 44]] << 20) |
                                  (gpsmatrix[:, [35, 39, 43]] << 12) |
-                                 (gpsmatrix[:, [34, 38, 42]] << 4) |
-                                 (gpsmatrix[:, [33, 37, 41]] >> 4)) - 
+                                 (gpsmatrix[:, [34, 38, 42]] << 4)  |
+                                 (gpsmatrix[:, [33, 37, 41]] >> 4)) -
                                  ((gpsmatrix[:, [36, 40, 44]]>=128)*(1<<28))).transpose()/10000
 
 
@@ -380,7 +409,7 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
             pause_time = max((1/plot_hertz) - (time.perf_counter()-start_time), 0) 
             # Change pause time with threading?
             #QtCore.QTimer.singleShot(pause_time, lambda:num(i))
-            time.sleep(pause_time)
+            #time.sleep(pause_time)
             start_time = time.perf_counter()
 
 class Channel:
@@ -456,13 +485,13 @@ class Housekeeping:
 
     def new_data(self, minframes):
         databuffer = minframes[:, self.b_ind] & self.b_mask
-        if self.rate == 8/8:
+        if self.rate == 8/8: # ACC, mNLP
             inds = np.where(databuffer == self.board_id)[0]
             inds = inds[np.where(np.diff(inds) == self.length)[0]]
             if inds.size != 0:
                 self.data[:, :inds.size] = databuffer[self.indcol + inds]
 
-        elif self.rate == 4/8:
+        elif self.rate == 4/8: # EFP
             inds = np.where( (databuffer==self.board_id[0])[:-1] & (databuffer==self.board_id[1])[1:])[0]
             inds = inds[np.where(np.diff(inds) == self.length)[0]][:-1]
             self.data[:, :inds.size] = databuffer[self.indcol + inds]<<4 | databuffer[self.indcol+1 + inds]
@@ -596,7 +625,7 @@ class ScrollingPlotWidget(scene.Widget):
 
         self.dimensions = 3
         fg = "#000000"
-        self.plot_view = self.grid.add_view(row=1, col_span=3, col=1, border_color='grey', bgcolor="#efefef")
+        self.plot_view = self.grid.add_view(row=1, col_span=1, col=1, border_color='grey', bgcolor="#efefef")
         self.plot_view.camera = 'turntable'
         self.plot_view.camera.center = (0.5, 0.5, 0.5)
         # self.plot_view.camera.fov = 80
@@ -625,7 +654,7 @@ class ScrollingPlotWidget(scene.Widget):
         # row 0 
         # title - column 4 to 5
         self.title = scene.Label(title, font_size=8, color=fg)
-        self.title_widget = self.grid.add_widget(self.title, row=0, col=1, col_span=3)
+        self.title_widget = self.grid.add_widget(self.title, row=0, col=1, col_span=1)
         self.title_widget.height_min = 30
         self.title_widget.height_max = 30    
 

@@ -1,7 +1,9 @@
 .vscode
-SatChecklist.txt
+todo.txt
 src/tests/
 lib/~$Vortex127.xlsx
 src/__pycache__/
 Snapshots/
 src/test
+Recieve.py
+Send.py
