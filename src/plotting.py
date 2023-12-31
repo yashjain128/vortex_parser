@@ -289,7 +289,6 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                 soc_data = sock.recv(1024)
                 raw_data = np.frombuffer(soc_data, dtype=np.uint8)
                 
-            
 
             data_arr = np.concatenate((last_ind_arr, raw_data))
 
