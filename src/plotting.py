@@ -29,6 +29,9 @@ RV_LEN = 48
 DEC_PLACES = 3
 AVG_NUMPOINTS = 10
 
+# How long to wait for data before ending. 
+sock_timeout = 7.0
+
 plot_width = 5
 do_write = False
 write_file = None
@@ -86,6 +89,13 @@ def find_RV(seq):
     candidates = np.where(np.correlate(seq, rv_arr, mode='valid') == target_rv)[0]
     check = candidates[:, np.newaxis] + np.arange(5)
     mask = np.all((np.take(seq, check) == rv_arr), axis=-1)
+    return candidates[mask]
+
+def find_subarray(sub_arr, arr):
+    target = np.dot(sub_arr, sub_arr)
+    candidates = np.where(np.correlate(arr, sub_arr, mode='valid') == target)[0]
+    check = candidates[:, np.newaxis] + np.arange(len(sub_arr))
+    mask = np.all((np.take(arr, check) == sub_arr), axis=-1)
     return candidates[mask]
 
 def set_hkunits(hkunits):
@@ -195,8 +205,9 @@ def add_housekeeping(protocol, board_id, length, numpoints, byte_ind, bitmask, h
     board_id = int(board_id)
     length = int(length)
     numpoints = int(numpoints)
-    byte_ind = int(byte_ind)
-    bitmask = int(bitmask)
+    byte_ind = [int(i) for i in byte_ind.split(',')] # takes list of ints
+    bitmask = [int(i) for i in bitmask.split(',')] # takes list of ints
+
     housekeeping_ = Housekeeping(board_id, length, numpoints, byte_ind, bitmask, hkvalues)
     data_channels[protocol].append(housekeeping_)
 
@@ -250,15 +261,18 @@ def crc_16(arr):
     for i in arr:
         crc ^= (i<<8);
         for i in range(0,8):
-            crc <<= 1
-            if crc&(1<<16):
-                crc ^= int("1021", 16)
+            if (crc&0x8000)>0:
+                crc <<= 1
+                crc ^= 0x1021
+            else:
+                crc <<= 1
         crc &= (1<<16)-1
     return crc
 
 def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
         global running, gps_data, acc_dig_temp_data
         read_length = bytes_ps//plot_hertz
+        #print(read_length)
         timer = time.perf_counter()
         do_update = True
 
@@ -266,9 +280,10 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
             read_file = open(read_file, "rb")
 
         elif read_mode == 1:
-            print(f"[Debug] Connected\nIP: {udp_ip}\n Port: {udp_port}")    
+            print(f"Socket connected\nIP: {udp_ip}\nPort: {udp_port}")    
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
-            sock.bind(("", udp_port)) 
+            sock.bind((udp_ip, udp_port)) 
+            sock.settimeout(sock_timeout)
         
         reset_graphs()
         
@@ -276,8 +291,10 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
         start_time = time.perf_counter()
 
         last_ind_arr=np.array([])
+        raw_data = np.zeros(read_length)
         while running:
-            ############## Read Data #################
+
+            ##################################### Read Data ##################################### 
             if read_mode == 0:
                 raw_data =  np.fromfile(read_file, dtype=np.uint8, count=read_length)
                 if len(raw_data) == 0:
@@ -286,9 +303,20 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                     continue
 
             elif read_mode == 1:
-                soc_data = sock.recv(1024)
-                raw_data = np.frombuffer(soc_data, dtype=np.uint8)
-                
+                try:
+                    bytes_remain = read_length
+                    ind = 0
+                    while (bytes_remain>0):
+                        #print(bytes_remain, end=" ");
+                        soc_data = np.frombuffer(sock.recv(bytes_remain))
+                        raw_data[ind:ind+len(soc_data)] = soc_data
+                        ind += len(soc_data)
+                        bytes_remain-=len(soc_data)
+
+                except TimeoutError:
+                    print(f"Socket timed-out ({sock_timeout}s)")
+                    running = False
+                    continue
 
             data_arr = np.concatenate((last_ind_arr, raw_data))
 
@@ -401,15 +429,12 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
 
             app.process_events()
 
-            # do_hk counts here
-            if do_hkunits:
-                pass
-                
-            pause_time = max((1/plot_hertz) - (time.perf_counter()-start_time), 0) 
-            # Change pause time with threading?
-            #QtCore.QTimer.singleShot(pause_time, lambda:num(i))
-            #time.sleep(pause_time)
-            start_time = time.perf_counter()
+            # Pause when reading a file
+            if (read_mode == 0):
+                print("pausing")
+                pause_time = max((1/plot_hertz) - (time.perf_counter()-start_time), 0) 
+                time.sleep(pause_time)
+                start_time = time.perf_counter()
 
 class Channel:
     def __init__(self, color, signed, numpoints, *raw_byte_info):
@@ -466,14 +491,16 @@ class Housekeeping:
     def __init__(self, board_id, length, numpoints, b_ind, b_mask, values):
 
         self.b_ind, self.b_mask = b_ind, b_mask 
-        self.rate = self.b_mask.bit_count()/8
+        self.rate = self.b_mask[0].bit_count()/8
 
-        if self.rate == 8/8: 
+        self.bpf = len(self.b_ind) # bytes per frame
+        if self.rate == 8/8:
             self.board_id = board_id
         elif self.rate == 4/8:
             self.board_id = [board_id>>4, board_id&0xF]
         else:
             raise ValueError("Unsupported housekeeping rate")
+
         self.numpoints = int(numpoints*self.rate)
         self.length = 11//self.rate
 
@@ -483,12 +510,18 @@ class Housekeeping:
         self.maxhkrange = AVG_NUMPOINTS
 
     def new_data(self, minframes):
-        databuffer = minframes[:, self.b_ind] & self.b_mask
-        if self.rate == 8/8: # ACC, mNLP
+        minframes = minframes.astype(np.uint8)
+        databuffer = np.zeros(len(minframes)*self.bpf, dtype=np.uint8)
+        for i in range(self.bpf):
+            databuffer[np.arange(len(minframes))*self.bpf+i] = minframes[:, self.b_ind[i]] & self.b_mask[i]
+        if self.rate == 8/8: # ACC, mNLP, PIP
+            if (self.board_id==49):
+                print(databuffer)
             inds = np.where(databuffer == self.board_id)[0]
             inds = inds[np.where(np.diff(inds) == self.length)[0]]
             if inds.size != 0:
                 self.data[:, :inds.size] = databuffer[self.indcol + inds]
+                
 
         elif self.rate == 4/8: # EFP
             inds = np.where( (databuffer==self.board_id[0])[:-1] & (databuffer==self.board_id[1])[1:])[0]
@@ -503,7 +536,7 @@ class Housekeeping:
         hkrange = min(self.maxhkrange, inds.size)
 
         for edit, data_row in zip(self.values, self.data):
-            if edit.isEnabled():
+            if True or edit.isEnabled():
                 if hkrange==0:
                     edit.setText("null")
                 else:
@@ -542,7 +575,6 @@ class ScrollingPlotWidget(scene.Widget):
         
 
     def configure2d(self, title, xlabel, ylabel, xlims=[0, 1], ylims=[-1, 1]):
-
         fg = "#000000"
         self.xlims = xlims[:]
         self.ylims = ylims[:]
@@ -663,6 +695,7 @@ class ScrollingPlotWidget(scene.Widget):
                                 axis_color=fg, tick_color=fg, text_color=fg, font_size=20, parent=self.plot_view.scene)
         self.zaxis = scene.Axis(pos=[[0, 0], [-1, 0]], tick_direction=(0, -1), axis_width=1, tick_width=1, domain=zlims,
                                 axis_color=fg, tick_color=fg, text_color=fg, font_size=20, parent=self.plot_view.scene)
+
         self.zaxis.transform = scene.transforms.MatrixTransform()  # its acutally an inverted xaxis
         self.zaxis.transform.rotate(90, (0, 1, 0))  # rotate cw around yaxis
         self.zaxis.transform.rotate(-45, (0, 0, 1))  # tick direction towards (-1,-1)

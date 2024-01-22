@@ -123,7 +123,7 @@ class Window(QMainWindow):
                 row.append( getval(chr(ord("B")+i) + str(row_num)) )
                 i += 1
 
-            # Remove last cell "None"
+            # Remove last cell which is "None"
             row = row[:-1]
 
             if len(row) == 0:
@@ -244,7 +244,7 @@ class Window(QMainWindow):
             self.time_write_reset()
             self.timer.start(1000)
             
-            plotting.parse(self.read_mode, self.plotHertzSpin.value(), self.read_file, self.hostInputLine.text(), self.portInputLine.text())
+            plotting.parse(self.read_mode, self.plotHertzSpin.value(), self.read_file, self.hostInputLine.text(), int(self.portInputLine.text()))
             
             self.timer.stop()
             self.readStart.setText("Start")
@@ -374,11 +374,11 @@ class Window(QMainWindow):
         self.liveUDPBox.setStyleSheet("QGroupBox#ColoredGroupBox { border: 1px solid #aaaaaa;}")
 
         self.hostLabel = QLabel("Local Host")
-        self.hostInputLine = QLineEdit()
+        self.hostInputLine = QLineEdit("127.0.0.1")
         self.hostInputLine.setFixedWidth(75)
 
         self.portLabel = QLabel("Local Port")
-        self.portInputLine = QLineEdit()
+        self.portInputLine = QLineEdit("12000")
         self.portInputLine.setFixedWidth(75)
 
         self.liveUDPBoxLayout.addWidget(self.hostLabel, 0, 0)
