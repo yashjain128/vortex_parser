@@ -30,7 +30,7 @@ DEC_PLACES = 3
 AVG_NUMPOINTS = 10
 
 # How long to wait for data before ending. 
-sock_timeout = 7.0
+sock_timeout = 5.0
 
 plot_width = 5
 do_write = False
@@ -257,9 +257,9 @@ def set_map(map_file):
             map_graph.yaxis.domain = latlim
 
 def crc_16(arr):
-    crc = 0;
+    crc = 0
     for i in arr:
-        crc ^= (i<<8);
+        crc ^= (i<<8)
         for i in range(0,8):
             if (crc&0x8000)>0:
                 crc <<= 1
@@ -293,7 +293,6 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
         last_ind_arr=np.array([])
         raw_data = np.zeros(read_length)
         while running:
-
             ##################################### Read Data ##################################### 
             if read_mode == 0:
                 raw_data =  np.fromfile(read_file, dtype=np.uint8, count=read_length)
@@ -303,20 +302,15 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                     continue
 
             elif read_mode == 1:
-                try:
-                    bytes_remain = read_length
-                    ind = 0
-                    while (bytes_remain>0):
-                        #print(bytes_remain, end=" ");
-                        soc_data = np.frombuffer(sock.recv(bytes_remain))
-                        raw_data[ind:ind+len(soc_data)] = soc_data
-                        ind += len(soc_data)
-                        bytes_remain-=len(soc_data)
+                pass
+                '''
+                r, _, _ = select([socket],[],[],0)
 
                 except TimeoutError:
                     print(f"Socket timed-out ({sock_timeout}s)")
                     running = False
                     continue
+                '''
 
             data_arr = np.concatenate((last_ind_arr, raw_data))
 
@@ -365,7 +359,6 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
 
                 # Number of rv packets
                 num_RV = np.shape(gpsmatrix)[0]
-                # Note skipped check sum
                 # All rv_packets whose checksum is equal to the last 2 bytes
                 
                 valid_rv_packets = np.zeros(num_RV, dtype=bool);
@@ -431,7 +424,6 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
 
             # Pause when reading a file
             if (read_mode == 0):
-                print("pausing")
                 pause_time = max((1/plot_hertz) - (time.perf_counter()-start_time), 0) 
                 time.sleep(pause_time)
                 start_time = time.perf_counter()
@@ -515,8 +507,6 @@ class Housekeeping:
         for i in range(self.bpf):
             databuffer[np.arange(len(minframes))*self.bpf+i] = minframes[:, self.b_ind[i]] & self.b_mask[i]
         if self.rate == 8/8: # ACC, mNLP, PIP
-            if (self.board_id==49):
-                print(databuffer)
             inds = np.where(databuffer == self.board_id)[0]
             inds = inds[np.where(np.diff(inds) == self.length)[0]]
             if inds.size != 0:
@@ -706,6 +696,7 @@ class ScrollingPlotWidget(scene.Widget):
         self.plot_view.add(line) 
         
         return line
+    
     def add_gridlines(self):
         self.view_grid = scene.visuals.GridLines(color=(0, 0, 0, 0.5))
         self.view_grid.set_gl_state('translucent')

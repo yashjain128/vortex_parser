@@ -141,7 +141,7 @@ class Window(QMainWindow):
         plotting.finish_creating()
 
         for fig in plotting.figures.values():
-            fig.native.setWindowIcon(QIcon('icon.png'))
+            fig.native.setWindowIcon(QIcon('src/icon.png'))
 
 
     def addHousekeeping(self, title, ttable, names): 
