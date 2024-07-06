@@ -15,12 +15,6 @@ Run `main.py` from the source folder
 
 ![image](https://github.com/yashjain128/vortex_parser/assets/54511272/4404e72c-0330-4901-8546-bb172b7463a0)
 
-Select an format file and map file with the dropdown or file explorer
-Files in the lib folder will be available in the dropdown
-
-Either select Read File and choose a file
-Or select UDP and specify the port info
-
 ## Project Organization
 The program is split into a files: `main.py` , `gui.py` , `plotting.py`
 
@@ -36,6 +30,8 @@ All of the udp data files are in the lib folder
 
 These will be implemented in the future
 - Live UDP parsing
+- 
 
 ##
 Contributed by Yash Jain
+jainy7002@gmail.com
