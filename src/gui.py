@@ -254,6 +254,7 @@ class Window(QMainWindow):
             self.readStart.setChecked(False)
         else:
             plotting.running = False
+            plotting.wait = False
     def close_plots(self):
         # Reset GUI after closing plotting window
         self.pickInstrCombo.setEnabled(True)
@@ -378,7 +379,7 @@ class Window(QMainWindow):
         self.hostInputLine.setFixedWidth(75)
 
         self.portLabel = QLabel("Local Port")
-        self.portInputLine = QLineEdit("12000")
+        self.portInputLine = QLineEdit("5000")
         self.portInputLine.setFixedWidth(75)
 
         self.liveUDPBoxLayout.addWidget(self.hostLabel, 0, 0)

@@ -29,8 +29,12 @@ RV_LEN = 48
 DEC_PLACES = 3
 AVG_NUMPOINTS = 10
 
+
+sock = None
 # How long to wait for data before ending. 
 sock_timeout = 5.0
+sock_wait = 0.1
+sock_rep = int(sock_timeout/sock_wait)
 
 plot_width = 5
 do_write = False
@@ -270,65 +274,106 @@ def crc_16(arr):
     return crc
 
 def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
-        global running, gps_data, acc_dig_temp_data
+        global running, gps_data, acc_dig_temp_data, sock_rep, sock_wait
         read_length = bytes_ps//plot_hertz
-        #print(read_length)
+
+        read_length += 126 - (read_length%126)
+
         timer = time.perf_counter()
         do_update = True
 
+        running = True
+
+        reset_graphs()
         if read_mode == 0:
             read_file = open(read_file, "rb")
+            raw_data = np.zeros(read_length)
 
         elif read_mode == 1:
             print(f"Socket connected\nIP: {udp_ip}\nPort: {udp_port}")    
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
             sock.bind((udp_ip, udp_port)) 
-            sock.settimeout(sock_timeout)
+            #sock.settimeout(sock_timeout)
+            sock.setblocking(0)
+            raw_data = b''
+            '''
+                wait = True
+                tries = 0
+                while (wait and running and tries<sock_rep):
+                    try:
+                        sock.recv(read_length)
+                        wait=False
+                    except BlockingIOError:
+                        pass
+                    app.process_events()
+                    sock_rep+=1
+                    time.sleep(0.1)
+            '''
+            
+                
         
-        reset_graphs()
-        
-        running = True
         start_time = time.perf_counter()
 
         last_ind_arr=np.array([])
-        raw_data = np.zeros(read_length)
+
+        #if udp
+
+        # Main loop
+        print("Starting")
         while running:
-            ##################################### Read Data ##################################### 
             if read_mode == 0:
                 raw_data =  np.fromfile(read_file, dtype=np.uint8, count=read_length)
                 if len(raw_data) == 0:
                     print("Finished reading file")
                     running = False
                     continue
+                data_arr = np.concatenate([last_ind_arr, raw_data])
 
-            elif read_mode == 1:
-                pass
-                '''
-                r, _, _ = select([socket],[],[],0)
+            else:
+                wait = True
+                tries = 0
+                read_left = read_length
+                raw_data = b''
+                while (read_left>0 and running and tries<sock_rep):
+                    try:
+                        #print(read_left)
+                        raw_data += sock.recv(read_left)
+                        wait=False
 
-                except TimeoutError:
-                    print(f"Socket timed-out ({sock_timeout}s)")
-                    running = False
-                    continue
-                '''
+                        read_left = read_length - len(raw_data)
 
-            data_arr = np.concatenate((last_ind_arr, raw_data))
+                    except BlockingIOError:
+                        #tries+=1
+                        app.process_events()
+                        #time.sleep(sock_wait)
+                data_arr = np.concatenate([last_ind_arr, np.frombuffer(raw_data, np.uint8)])
+                #print(raw_data)
 
+            #print(data_arr)
+            #print("what")
+            #print(len(data_arr))
             
             if do_write:
                 raw_data.tofile(write_file)
-
+            #print(data)
             inds = find_SYNC(data_arr)
             if len(inds)==0:
                 print("No valid sync frames")
                 continue
 
+            # Save last index for next cycle
             last_ind_arr = data_arr[inds[-1]:]
+
+            # Check for all indexes if the length between them is correct
             inds = inds[:-1][(np.diff(inds) == PACKET_LENGTH)]
-            inds[:-1] = inds[:-1][(np.diff(data_arr[inds + 6]) != 0)]
+
+            #
+            inds = inds[:-1][(np.diff(data_arr[inds + 6]) != 0)]
 
             all_minframes = data_arr[inds[:, None] + e].astype(int)
             #print(all_minframes)
+
+            # Frame types
             protocol_minframes = [all_minframes,
                 all_minframes[np.where(all_minframes[:, 57] & 3 == 1)],
                 all_minframes[np.where(all_minframes[:, 57] & 3 == 2)],
@@ -427,6 +472,8 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                 pause_time = max((1/plot_hertz) - (time.perf_counter()-start_time), 0) 
                 time.sleep(pause_time)
                 start_time = time.perf_counter()
+        if (read_mode==1):
+            sock.close()
 
 class Channel:
     def __init__(self, color, signed, numpoints, *raw_byte_info):
