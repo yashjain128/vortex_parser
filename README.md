@@ -1,21 +1,19 @@
-# SAIL Parser
-Real time data parsing and plotting for VortEx. Made for the Space and Atmospheric Instrumentation Lab.
+# VortEx Parser
+Real time data parsing and plotting for VortEx. Made for the Space and Atmospheric Instrumentation Lab at ERAU.
 
 ##
 ### Setup
 Requires python >= 3.10
+
 Install the required libraries from the `requirements.txt` file through the command:  
 `$ pip install -r requirements.txt`
 
-Or download the libraries manually:   
-`numpy, vispy, openpyxl, PyQt5, scipy, pymap3d`
-
-Run `main.py` from the source folder
+Or download the libraries manually: `numpy, vispy, openpyxl, PyQt5, scipy, pymap3d`
 
 ##
 ### Using the parser
 
-![image](https://github.com/yashjain128/vortex_parser/assets/54511272/4404e72c-0330-4901-8546-bb172b7463a0)
+Run `main.py` from the `src` folder
 
 ##
 ### Project Organization
@@ -35,8 +33,10 @@ File selection will default to the lib folder
 These will be implemented in the future
 - Live UDP parsing
 - Better excel format
+- Faster Parsing
 - Testing
 
 ##
 Contributed by Yash Jain
+
 jainy7002@gmail.com

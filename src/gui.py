@@ -68,6 +68,10 @@ class Window(QMainWindow):
         # The format and plot width cannot be changed after the plots are made
         self.pickInstrCombo.setEnabled(False)
         self.pickInstrButton.setEnabled(False)
+
+        self.pickMapNameLabel.setEnabled(True)
+        self.pickMapButton.setEnabled(True)
+
         self.plotWidthSpin.setDisabled(True)
         self.plotWidthLabel.setDisabled(True) 
 
@@ -141,7 +145,7 @@ class Window(QMainWindow):
         plotting.finish_creating()
 
         for fig in plotting.figures.values():
-            fig.native.setWindowIcon(QIcon('src/icon.png'))
+            fig.native.setWindowIcon(QIcon('icon.png'))
 
 
     def addHousekeeping(self, title, ttable, names): 
@@ -259,6 +263,10 @@ class Window(QMainWindow):
         # Reset GUI after closing plotting window
         self.pickInstrCombo.setEnabled(True)
         self.pickInstrButton.setEnabled(True)
+
+        self.pickMapButton.setEnabled(False)
+        self.pickMapNameLabel.setEnabled(False)
+
         self.plotWidthSpin.setEnabled(True)
         self.plotWidthLabel.setEnabled(True)
         self.pickInstrCombo.setCurrentIndex(0)
@@ -280,7 +288,7 @@ class Window(QMainWindow):
     def __init__(self):
         QMainWindow.__init__(self)
         self.setWindowIcon(QIcon('icon.png'))
-        self.setWindowTitle("SAIL parser")
+        self.setWindowTitle("VortEx Parser")
 
         self.dir = dirname(dirname(abspath(__file__)))
 
@@ -340,9 +348,11 @@ class Window(QMainWindow):
         self.pickMapLabel = QLabel("Map File (.mat)")
         self.pickMapButton = QPushButton("...")
         self.pickMapButton.clicked.connect(self.findMap)
+        self.pickMapButton.setEnabled(False)
         self.pickMapButton.setFixedWidth(24)
         self.pickMapNameLabel = QLabel("Pick a file")
         self.pickMapNameLabel.setStyleSheet("background-color: white")
+        self.pickMapNameLabel.setEnabled(False)
 
         self.pickMapLayout.addWidget(self.pickMapLabel, 1, 0)
         self.pickMapLayout.addWidget(self.pickMapNameLabel, 1, 1)
@@ -520,7 +530,7 @@ class Window(QMainWindow):
         
         self.gpsGroupBox.setLayout(self.gpsLayout)
 
-        self.valuesLayout.addWidget(self.gpsGroupBox);
+        self.valuesLayout.addWidget(self.gpsGroupBox)
         self.valuesWidget.setLayout(self.valuesLayout)
 
 

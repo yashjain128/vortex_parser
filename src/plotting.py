@@ -330,32 +330,20 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                 data_arr = np.concatenate([last_ind_arr, raw_data])
 
             else:
-                wait = True
-                tries = 0
                 read_left = read_length
                 raw_data = b''
-                while (read_left>0 and running and tries<sock_rep):
+                while (read_left>0 and running):
                     try:
-                        #print(read_left)
                         raw_data += sock.recv(read_left)
-                        wait=False
-
                         read_left = read_length - len(raw_data)
 
                     except BlockingIOError:
-                        #tries+=1
                         app.process_events()
-                        #time.sleep(sock_wait)
                 data_arr = np.concatenate([last_ind_arr, np.frombuffer(raw_data, np.uint8)])
-                #print(raw_data)
-
-            #print(data_arr)
-            #print("what")
-            #print(len(data_arr))
             
             if do_write:
                 raw_data.tofile(write_file)
-            #print(data)
+
             inds = find_SYNC(data_arr)
             if len(inds)==0:
                 print("No valid sync frames")
@@ -410,6 +398,9 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                 for i in range(num_RV):
                     valid_rv_packets[i] = crc_16(gpsmatrix[i,:-3]) == (gpsmatrix[i, -2]<<8) | gpsmatrix[i, -3]
                 gpsmatrix = gpsmatrix[np.where(valid_rv_packets)].astype(np.uint64)
+
+                num_RV = np.shape(gpsmatrix)[0]
+
                 # Signed position data
                 gps_pos_ecef = (((gpsmatrix[:, [12, 20, 28]] << 32) |
                                 (gpsmatrix[:, [11, 19, 27]] << 24) |
