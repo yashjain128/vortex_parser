@@ -17,11 +17,12 @@ start_time = time.perf_counter()
 print("Sending...")
 i=0
 while data:
+    # Should run 10 times each second ~ 0.9 seconds sleep and 0.1 second of sending the code.
     if(sock.sendto(data, (host, port))):
         data = f.read(buffer_size)
 
     if (i%rep==0):
-        time.sleep(0.09)
+        time.sleep(0.09) 
     i+=1
 print(i)
 print(time.perf_counter()-start_time)

@@ -275,51 +275,37 @@ def crc_16(arr):
 
 def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
         global running, gps_data, acc_dig_temp_data, sock_rep, sock_wait
+
+        # Read length is the bytes in each hertz
+        # Must be multiple of 126 since that is datagram length
         read_length = bytes_ps//plot_hertz
-
         read_length += 126 - (read_length%126)
-
-        timer = time.perf_counter()
-        do_update = True
-
-        running = True
 
         reset_graphs()
         if read_mode == 0:
+            print("Opening recording")
             read_file = open(read_file, "rb")
             raw_data = np.zeros(read_length)
 
         elif read_mode == 1:
-            print(f"Socket connected\nIP: {udp_ip}\nPort: {udp_port}")    
+            print("Connecting Socket...")
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
             sock.bind((udp_ip, udp_port)) 
-            #sock.settimeout(sock_timeout)
+            print(f"Socket connected\nIP: {udp_ip}\nPort: {udp_port}")    
             sock.setblocking(0)
             raw_data = b''
-            '''
-                wait = True
-                tries = 0
-                while (wait and running and tries<sock_rep):
-                    try:
-                        sock.recv(read_length)
-                        wait=False
-                    except BlockingIOError:
-                        pass
-                    app.process_events()
-                    sock_rep+=1
-                    time.sleep(0.1)
-            '''
-            
-                
         
         start_time = time.perf_counter()
+        calc_time = 0
+        draw_time = 0
 
         last_ind_arr=np.array([])
 
-        #if udp
-
+        next_process_events = 0
+        cnt =0
         # Main loop
-        print("Starting")
+        print("Starting Parsing")
+        running = True
         while running:
             if read_mode == 0:
                 raw_data =  np.fromfile(read_file, dtype=np.uint8, count=read_length)
@@ -338,12 +324,33 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                         read_left = read_length - len(raw_data)
 
                     except BlockingIOError:
-                        app.process_events()
+                        cnt+=1
+
+                        # Only process eventts again if it has been a tenth of a second
+                        if (time.perf_counter()>next_process_events):
+                            draw_start_time = time.perf_counter()
+                            app.process_events()
+                            draw_time += time.perf_counter()-draw_start_time
+                            next_process_events = time.perf_counter()+0.1
+                        else:
+                            time.sleep(0.1)
+                        
+
+                        #draw_time += time.perf_counter()-draw_start_time
                 data_arr = np.concatenate([last_ind_arr, np.frombuffer(raw_data, np.uint8)])
             
+            # Must process the gui so it does not freeze
+            if (next_process_events==0):
+                draw_start_time = time.perf_counter()
+                app.process_events()
+                draw_time += time.perf_counter()-draw_start_time
+            next_process_events = 0 
+
             if do_write:
                 raw_data.tofile(write_file)
 
+            calc_start_time = time.perf_counter()
+            
             inds = find_SYNC(data_arr)
             if len(inds)==0:
                 print("No valid sync frames")
@@ -375,14 +382,15 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
             gps_check = all_minframes[:, [7, 27, 47, 67]].flatten()
             gps_data_d = gps_raw_data[np.where(gps_check==128)]
             
+            # Gps indices
             gps_inds = np.array([])
             if len(gps_data_d)>0:
                 gps_inds = find_RV(gps_data_d)
             
             # Check if last index is inside the gps stream
-            #print(gps_inds[-1]+RV_LEN, len(gps_data_d))
             if len(gps_inds)>0 and gps_inds[-1]+RV_LEN>len(gps_data_d):
                 gps_inds = gps_inds[:-1]
+
             # Parse gps data when there are bytes available
             if len(gps_inds)>0:
                 if len(gps_data_d) - gps_inds[-1] < RV_LEN:
@@ -392,13 +400,14 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
 
                 # Number of rv packets
                 num_RV = np.shape(gpsmatrix)[0]
+
                 # All rv_packets whose checksum is equal to the last 2 bytes
-                
-                valid_rv_packets = np.zeros(num_RV, dtype=bool);
+                valid_rv_packets = np.zeros(num_RV, dtype=bool)
                 for i in range(num_RV):
                     valid_rv_packets[i] = crc_16(gpsmatrix[i,:-3]) == (gpsmatrix[i, -2]<<8) | gpsmatrix[i, -3]
                 gpsmatrix = gpsmatrix[np.where(valid_rv_packets)].astype(np.uint64)
 
+                # Get num_rv after eliminating frames that did not pass the checksum
                 num_RV = np.shape(gpsmatrix)[0]
 
                 # Signed position data
@@ -440,7 +449,6 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                 for gps_markers in gps3d_points:
                     gps_markers.set_data(pos=np.transpose(np.array([lon3d, lat3d, alt3d])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
 
-            # Housekeeping
 
             # check if plt_hertz time has elapsed, set do_update to true 
             for d, minframes in zip(data_channels.values(), protocol_minframes):
@@ -453,11 +461,11 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
             
             if acc_dig_temp != None:
                 acc_dig_temp.setText(f"{acc_dig_temp_data[-1]: .{DEC_PLACES}f}")
-            #for gps_markers in gps3d_oints:
-            #    gps_markers.set_data(pos=np.transpose(np.array([gps_pos_lat, gps_pos_lon, gps_pos_alt])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
 
-            app.process_events()
+            calc_time += time.perf_counter()-calc_start_time
 
+
+            
             # Pause when reading a file
             if (read_mode == 0):
                 pause_time = max((1/plot_hertz) - (time.perf_counter()-start_time), 0) 
@@ -465,6 +473,9 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                 start_time = time.perf_counter()
         if (read_mode==1):
             sock.close()
+        print(f"Calculation Time {calc_time}")
+        print(f"Drawing Time {draw_time}")
+        print(cnt)
 
 class Channel:
     def __init__(self, color, signed, numpoints, *raw_byte_info):
@@ -564,7 +575,7 @@ class Housekeeping:
         hkrange = min(self.maxhkrange, inds.size)
 
         for edit, data_row in zip(self.values, self.data):
-            if True or edit.isEnabled():
+            if edit.isEnabled():
                 if hkrange==0:
                     edit.setText("null")
                 else:
@@ -578,8 +589,6 @@ class Housekeeping:
 class ScrollingPlotWidget(scene.Widget):
     """
     Widget for 2d and 3d plots built on top of scene.Widget.
-
-    To use this with Fig changing  the default class is necessary
     """
     def __init__(self, *args, **kwargs):
         self.grid = None
