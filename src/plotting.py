@@ -313,32 +313,38 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
                     print("Finished reading file")
                     running = False
                     continue
-                data_arr = np.concatenate([last_ind_arr, raw_data])
 
             else:
                 read_left = read_length
-                raw_data = b''
+                byte_data = b''
                 while (read_left>0 and running):
                     try:
-                        raw_data += sock.recv(read_left)
-                        read_left = read_length - len(raw_data)
-
+                        byte_data += sock.recv(126)
+                        read_left = read_length - len(byte_data)
                     except BlockingIOError:
-                        cnt+=1
-
                         # Only process eventts again if it has been a tenth of a second
                         if (time.perf_counter()>next_process_events):
-                            draw_start_time = time.perf_counter()
+                            #draw_start_time = time.perf_counter()
                             app.process_events()
-                            draw_time += time.perf_counter()-draw_start_time
+                            #draw_time += time.perf_counter()-draw_start_time
                             next_process_events = time.perf_counter()+0.1
                         else:
                             time.sleep(0.1)
+
+                    except WindowsError:
+                        print("Avoided socket error")
+                        byte_data = b''
+                        read_left = read_length
+
+
+                if (not running):
+                    continue
+                    
+                raw_data = np.frombuffer(byte_data, np.uint8)
                         
 
-                        #draw_time += time.perf_counter()-draw_start_time
-                data_arr = np.concatenate([last_ind_arr, np.frombuffer(raw_data, np.uint8)])
-            
+            # Add the remaining bytes from the p
+            data_arr = np.concatenate([last_ind_arr, raw_data])
             # Must process the gui so it does not freeze
             if (next_process_events==0):
                 draw_start_time = time.perf_counter()

@@ -196,13 +196,14 @@ class Window(QMainWindow):
             self.do_write=False
             self.writeFileNameEdit.setEnabled(True)
             self.write_file.close()
+            self.write_file = None
         else:
             self.writeStart.setStyleSheet("background-color: #29d97e")
             self.do_write=True
             self.writeFileNameEdit.setEnabled(False)
+            self.write_file = open(self.dir+"/recordings/"+self.writeFileNameEdit.text()+".udp", "ab")
          
-        self.write_file = open(self.dir+"/recordings/"+self.writeFileNameEdit.text()+".udp", "ab")
-        plotting.do_write = self.do_write 
+        plotting.do_write = self.do_write
         plotting.write_file = self.write_file
     
     def time_run(self):
