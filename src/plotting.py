@@ -273,7 +273,7 @@ def crc_16(arr):
         crc &= (1<<16)-1
     return crc
 
-def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
+def parse(read_mode, plot_hertz, read_file_name, udp_ip, udp_port):
         global running, gps_data, acc_dig_temp_data, sock_rep, sock_wait
 
         # Read length is the bytes in each hertz
@@ -284,7 +284,7 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
         reset_graphs()
         if read_mode == 0:
             print("Opening recording")
-            read_file = open(read_file, "rb")
+            read_file = open(read_file_name, "rb")
             raw_data = np.zeros(read_length)
 
         elif read_mode == 1:
@@ -293,7 +293,9 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
             sock.bind((udp_ip, udp_port)) 
             print(f"Socket connected\nIP: {udp_ip}\nPort: {udp_port}")    
             sock.setblocking(0)
-            raw_data = b''
+
+        
+        raw_data = np.zeros(read_length)
         
         start_time = time.perf_counter()
         calc_time = 0
@@ -302,46 +304,37 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
         last_ind_arr=np.array([])
 
         next_process_events = 0
-        cnt =0
         # Main loop
         print("Starting Parsing")
         running = True
         while running:
             if read_mode == 0:
-                raw_data =  np.fromfile(read_file, dtype=np.uint8, count=read_length)
+                raw_data = np.fromfile(read_file, dtype=np.uint8, count=read_length)
                 if len(raw_data) == 0:
                     print("Finished reading file")
                     running = False
                     continue
 
             else:
-                read_left = read_length
-                byte_data = b''
-                while (read_left>0 and running):
+                read_num = 0
+                while (read_num<read_length and running):
                     try:
-                        byte_data += sock.recv(126)
-                        read_left = read_length - len(byte_data)
+                        raw_data[read_num:read_num+126] = np.frombuffer(sock.recv(126), np.uint8)
+                        read_num+=126
                     except BlockingIOError:
                         # Only process eventts again if it has been a tenth of a second
                         if (time.perf_counter()>next_process_events):
-                            #draw_start_time = time.perf_counter()
                             app.process_events()
-                            #draw_time += time.perf_counter()-draw_start_time
                             next_process_events = time.perf_counter()+0.1
                         else:
-                            time.sleep(0.1)
+                            time.sleep(0.01)
 
                     except WindowsError:
                         print("Avoided socket error")
-                        byte_data = b''
-                        read_left = read_length
-
+                        read_num = 0
 
                 if (not running):
                     continue
-                    
-                raw_data = np.frombuffer(byte_data, np.uint8)
-                        
 
             # Add the remaining bytes from the p
             data_arr = np.concatenate([last_ind_arr, raw_data])
@@ -481,7 +474,6 @@ def parse(read_mode, plot_hertz, read_file, udp_ip, udp_port):
             sock.close()
         print(f"Calculation Time {calc_time}")
         print(f"Drawing Time {draw_time}")
-        print(cnt)
 
 class Channel:
     def __init__(self, color, signed, numpoints, *raw_byte_info):
