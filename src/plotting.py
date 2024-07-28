@@ -290,12 +290,13 @@ def parse(read_mode, plot_hertz, read_file_name, udp_ip, udp_port):
         elif read_mode == 1:
             print("Connecting Socket...")
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
-            sock.bind((udp_ip, udp_port)) 
+            sock.bind((udp_ip, udp_port))
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF,620000)
             print(f"Socket connected\nIP: {udp_ip}\nPort: {udp_port}")    
             sock.setblocking(0)
 
         
-        raw_data = np.zeros(read_length)
+        raw_data = np.zeros(read_length, np.uint8)
         
         start_time = time.perf_counter()
         calc_time = 0
@@ -336,9 +337,6 @@ def parse(read_mode, plot_hertz, read_file_name, udp_ip, udp_port):
                 if (not running):
                     continue
 
-            # Add the remaining bytes from the p
-            data_arr = np.concatenate([last_ind_arr, raw_data])
-            # Must process the gui so it does not freeze
             if (next_process_events==0):
                 draw_start_time = time.perf_counter()
                 app.process_events()
@@ -347,6 +345,10 @@ def parse(read_mode, plot_hertz, read_file_name, udp_ip, udp_port):
 
             if do_write:
                 raw_data.tofile(write_file)
+            # Add the remaining bytes from the p
+            data_arr = np.concatenate([last_ind_arr, raw_data])
+            # Must process the gui so it does not freeze
+
 
             calc_start_time = time.perf_counter()
             
