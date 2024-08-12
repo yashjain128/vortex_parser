@@ -1,7 +1,7 @@
 """
 Module to handle plotting, housekeeping, and GPS
 
-Written for the Space and Atmospheric Instrumentation Laboratory
+Written for the Space and Atmospheric Instrumentation Laboratory at ERAU
 by Yash Jain
 """
 import time, math
@@ -275,7 +275,6 @@ def crc_16(arr):
 
 def parse(read_mode, plot_hertz, read_file_name, udp_ip, udp_port):
         global running, gps_data, acc_dig_temp_data, sock_rep, sock_wait
-
         # Read length is the bytes in each hertz
         # Must be multiple of 126 since that is datagram length
         read_length = bytes_ps//plot_hertz
