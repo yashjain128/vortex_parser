@@ -95,13 +95,6 @@ def find_RV(seq):
     mask = np.all((np.take(seq, check) == rv_arr), axis=-1)
     return candidates[mask]
 
-def find_subarray(sub_arr, arr):
-    target = np.dot(sub_arr, sub_arr)
-    candidates = np.where(np.correlate(arr, sub_arr, mode='valid') == target)[0]
-    check = candidates[:, np.newaxis] + np.arange(len(sub_arr))
-    mask = np.all((np.take(arr, check) == sub_arr), axis=-1)
-    return candidates[mask]
-
 def set_hkunits(hkunits):
     global do_hkunits
     do_hkunits = hkunits
@@ -375,8 +368,6 @@ def parse(read_mode, plot_hertz, read_file_name, udp_ip, udp_port):
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 1)],
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 0)]]
             
-            ################################### GPS ###################################
-
             # Gps bytes are at 6, 26, 46, 66 when the next byte == 128
             gps_raw_data = all_minframes[:, [6, 26, 46, 66]].flatten()
             gps_check = all_minframes[:, [7, 27, 47, 67]].flatten()

@@ -4,62 +4,136 @@ Module to handle incoming data
 Written for the Space and Atmospheric Instrumentation Laboratory at ERAU
 by Yash Jain
 """
-import numpy as np
-from openpyxl import load_workbook
+from os.path import dirname, abspath
 
+import time                           
+from datetime import datetime
+
+import numpy as np                                # Vectorization with numpy arrays
+from math import log2                             # Parsing byte data          
+from openpyxl import load_workbook                # Reading excel format files
+from pymap3d.ecef import ecef2geodetic, ecef2enuv # For coordinates
+import socket                                     # Recieving data with socket
+
+# SYNC frames to identify minor frames
+# All minor frames end in SYNC
 SYNC = [64, 40, 107, 254]
 MINFRAME_LEN = 2 * 40
 PACKET_LENGTH = MINFRAME_LEN + 44
-bytes_ps = PACKET_LENGTH * 5000
+bytes_ps = PACKET_LENGTH * 5000 # bytes_ps will be manually set in the excel format
+# Types of frames
+PROTOCOLS = ['all', 'odd frame', 'even frame', 'odd sfid', 'even sfid']
 
+data_channels = []
+
+# GPS label names
+GPS_NAMES_ID = ["lon", "lat", "alt", "veast", "vnorth", "vup", "shorz", "numsats"]
+GPS_NAMES = ["Longitude (deg)", "Latitude (deg)", "Altitude (km)", "vEast (m/s)", "vNorth (m/s)", "vUp (m/s)", "Horz. Speed (m/s)", "Num Sats"]
+# Identify gps data in RV frames
 RV_HEADER = [114, 86, 48, 50, 65]
 RV_LEN = 48
+gps_data = None
 
-# how many decimal places to round gps data
-DEC_PLACES = 3
-AVG_NUMPOINTS = 10
+# Housekeeping coefficients and constants for converting from counts to units
+hkunits = True # When true counts will be converted to units
+HK_NAMES =          ["Temp1" , "Temp2" , "Temp3" , "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3 V", "VBat Mon"]
+HK_COEF  = np.array([-76.9231, -76.9231, -76.9231, -76.9231   , 16     , 6.15   , 7.329  , 3     ,  2      , 2         ], dtype=np.float64)[:, None]
+HK_ADD   = np.array([202.54  , 202.54  , 202.54  , 202.54     , 0      , -16.88 , 0      , 0     ,  0      , 0         ], dtype=np.float64)[:, None]
+# Housekeeping display constants
+DEC_PLACES = 3     # Decimals of precision for housekeeping 
+AVG_NUMPOINTS = 10 # Number of housekeeping points to average
+# ACC's dig temp is a hardcoded housekeeping value
+acc_dig_temp = None
+acc_dig_temp_data = np.zeros(25000, np.uint32)
 
+# When read mode is 0 then a read_file is the read
+# When read mode is 1 then the socket is used
+read_mode = 0
 
+# Socket variables
 sock = None
-# How long to wait for data before ending. 
-sock_timeout = 5.0
+sock_timeout = 5.0 # How long to wait for data before ending. 
 sock_wait = 0.1
 sock_rep = int(sock_timeout/sock_wait)
 
-plot_width = 5
-do_write = False
+read_file = None
+
+# Write file
+write_mode = False
 write_file = None
+raw_data = None
 
-HK_NAMES = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3 V", "VBat Mon"]
-GPS_NAMES = ["Longitude (deg)", "Latitude (deg)", "Altitude (km)", "vEast (m/s)", "vNorth (m/s)", "vUp (m/s)", "Horz. Speed (m/s)", "Num Sats"]
-GPS_NAMES_ID = ["lon", "lat", "alt", "veast", "vnorth", "vup", "shorz", "numsats"]
+# Plot rate settings
+plot_hertz = 5
+plot_width = 5
 
-acc_dig_temp = None
-acc_dig_temp_data = np.zeros(25000, np.uint32)
-# Housekeeping coefficients and constants for units
-do_hkunits = True
-HK_COEF = np.array([-76.9231    , -76.9231, -76.9231, -76.9231, 16, 6.15, 7.329, 3, 2, 2], dtype=np.float64) [:, None]
-HK_ADD = np.array([202.54, 202.54, 202.54, 202.54, 0, -16.88, 0, 0, 0, 0], dtype=np.float64) [:, None]
+# Excel Sheet
+xl_sheet = None
+def getval(cell, t):
+    '''
+    Read a cell with
+    '''
+    if xl_sheet==None:
+        return None
+    val = xl_sheet[cell].value
+    if t==int:
+        return val
+    elif t==str:
+        return val
+    elif t==bool:
+        return val
+    elif t==list:
+        return [int(i) for i in val.split(';')]
 
-PROTOCOLS = ['all', 'odd frame', 'even frame', 'odd sfid', 'even sfid']
+    else:
+        return val
+        
 
-def add_channel(color, protocol, signed, *byte_info):
+# Swap endianness: [3, 2, 1, 0, 7, 6, 5, 4 ... 79, 78, 77, 76]
+e = np.arange(MINFRAME_LEN)
+for i in range(0, MINFRAME_LEN, 4):
+    e[i:i+4] = e[i:i+4][::-1]
+
+sync_arr = np.array(SYNC)
+target_sync = np.dot(sync_arr, sync_arr)
+def find_SYNC(seq):
+    candidates = np.where(np.correlate(seq, sync_arr, mode='valid') == target_sync)[0]
+    check = candidates[:, np.newaxis] + np.arange(4)
+    mask = np.all((np.take(seq, check) == sync_arr), axis=-1)
+    return candidates[mask] 
+
+rv_arr = np.array(RV_HEADER)
+target_rv = np.dot(rv_arr, rv_arr)
+def find_RV(seq):
+    candidates = np.where(np.correlate(seq, rv_arr, mode='valid') == target_rv)[0]
+    check = candidates[:, np.newaxis] + np.arange(5)
+    mask = np.all((np.take(seq, check) == rv_arr), axis=-1)
+    return candidates[mask]
+
+def add_channel(graph_name, protocol, signed, byte_ind, bitmask):
     signed = signed=="True"
     byte_info = [int(i) for i in byte_info]
     # Take last added graph
-    graph = plot_graphs[-1]
-    
-    channel = Channel(color, signed, graph.xlims[1], *byte_info)
-    graph.add_line(channel.line)
+
+    channel = Channel(signed, byte_ind, bitmask)
 
     # Graph must fit the channel data
-    graph.ylims[0] = min(graph.ylims[0], channel.ylims[0])
-    graph.ylims[1] = max(graph.ylims[1], channel.ylims[1])
     data_channels[protocol].append(channel)
+
+def add_housekeeping(protocol, board_id, length, numpoints, byte_ind, bitmask, hkvalues):
+    board_id = int(board_id)
+    length = int(length)
+    numpoints = int(numpoints)
+    byte_ind = [int(i) for i in byte_ind.split(',')] # takes list of ints
+    bitmask = [int(i) for i in bitmask.split(',')] # takes list of ints
+
+    housekeeping_ = Housekeeping(board_id, length, numpoints, byte_ind, bitmask, hkvalues)
+    data_channels[protocol].append(housekeeping_)
+
 
 def crc_16(arr):
     """
-    Check sum
+    Checksum for gps data
     """
     crc = 0
     for i in arr:
@@ -73,7 +147,7 @@ def crc_16(arr):
         crc &= (1<<16)-1
     return crc
     
-def init(format_file, read_mode=1, udp_ip="127.0.0.1", udp_port="5000", read_file="", write_mode=0, write_file="", hk_units=1, plot_hertz=5, plot_width=5) -> None:
+def init(format_file, read_mode=1, udp_ip="127.0.0.1", udp_port="5000", read_file_name="", do_write=0, write_file_name="", do_hkunits=1, hertz=5, width=5) -> None:
     '''
     Setup for parsing by specifying how the data
 
@@ -85,20 +159,40 @@ def init(format_file, read_mode=1, udp_ip="127.0.0.1", udp_port="5000", read_fil
     write_mode =0             Set to 1 to write to write_file
     write_file =""            The name as a string for the file to write to. Will default to a name with todays date.
     hk_units   =1             Set to 1 to have housekeeping data in units, 0 for counts
-    plot_hertz =5             parse() will read (1/plot_hertz) seconds of data
-    plot_width =5             The amount of seconds of data to store 
+    hertz      =5             parse() will read (1/plot_hertz) seconds of data
+    width      =5             The amount of seconds of data to store 
     '''
+    global sock, read_length, read_file, plot_width, plot_hertz, raw_data, gps_data, write_mode, write_file, hk_units, xl_sheet
 
+    plot_hertz = hertz
+    plot_width = width
+    
+    # Initialize a write file
+    dir = dirname(dirname(abspath(__file__)))
+    write_mode = do_write
+    if write_mode:
+        if (write_file_name==""):
+            write_file = "Recording"+datetime.today().strftime('%Y-%m-%d')
+        write_file = open(dir+"/recordings/"+write_file_name+".udp", "ab")
+
+    # Load the excel format file    
     xl_sheet = load_workbook(format_file, data_only=True).active
-    getval = lambda c: str(xl_sheet[c].value)
 
     # Bytes/second
-    bps = int(getval("G3"))
-    bytes_ps = bps
+    bytes_ps = getval("D3", int)
+    read_length = bytes_ps//plot_hertz
+    read_length += 126 - (read_length%126)
 
+    # Set up gps data dictionary
+    gps_data = {gps_name:np.zeros(getval("D4", int)*width, float) for gps_name in GPS_NAMES_ID}
+
+    # Set hk units
+    hk_units = do_hkunits
+
+    '''
     # Plots
-    graph_row_start, graph_row_end = getval("C3"), getval("D3")
-    for row_num in range(int(graph_row_start), int(graph_row_end)+1):
+    graph_rows = getval("D7", list)
+    for row_num in range(graph_rows[0], graph_rows[1]+1):
         row = [getval("B"+str(row_num))]
         i = 1
         while row[-1] != "None":
@@ -106,21 +200,24 @@ def init(format_file, read_mode=1, udp_ip="127.0.0.1", udp_port="5000", read_fil
             i += 1
         # Remove last cell "None"
         row = row[:-1]
-
+        
         if len(row) == 0:
             continue
         elif row[0][0] == '#':
             add_channel(*row)
+    '''
+    # Channels
+    graph_rows = getval("D7", list)
+    for row_num in range(graph_rows[0], graph_rows[1]+1):
 
     # Housekeeping
-    hk_row_start, hk_row_end = getval("C5"), getval("D5")
-    for row_num in range(int(hk_row_start), int(hk_row_end)+1):
-        row = [getval("B"+str(row_num))]
+    hk_rows = getval("D8", list)
+    for row_num in range(int(hk_rows[0]), int(hk_rows[1])+1):
+        row = [getval("D"+str(row_num))]
         i = 1
         while row[-1] != "None":
-            row.append( getval(chr(ord("B")+i) + str(row_num)) )
+            row.append( getval(chr(ord("D")+i) + str(row_num)) )
             i += 1
-
         # Remove last cell which is "None"
         row = row[:-1]
 
@@ -128,17 +225,14 @@ def init(format_file, read_mode=1, udp_ip="127.0.0.1", udp_port="5000", read_fil
             continue
         else:
             if (row[0]=="ACC"):
-                hkValues = self.addHousekeeping(row[0], row[7:]+["True"], plotting.HK_NAMES+["Dig Temp"], )
-                plotting.set_acc_dig_temp(hkValues[-1])
-                plotting.add_housekeeping(*row[1:7], hkValues[:-1])
+                add_housekeeping(*row[1:7])
             else:
-                hkValues = self.addHousekeeping(row[0], row[7:], plotting.HK_NAMES)
-                plotting.add_housekeeping(*row[1:7], hkValues)
+                add_housekeeping(*row[1:7])
             
-    
+    '''
     self.valuesWidget.show()
     plotting.finish_creating()
-
+    ''' 
 
     if read_mode == 0:
         print("Opening recording")
@@ -149,7 +243,7 @@ def init(format_file, read_mode=1, udp_ip="127.0.0.1", udp_port="5000", read_fil
         print("Connecting Socket...")
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
         sock.bind((udp_ip, udp_port))
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF,620000)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF,bytes_ps) # Set the socket max read buffer so data doesn't overflow.
         print(f"Socket connected\nIP: {udp_ip}\nPort: {udp_port}")    
         sock.setblocking(0)
 
@@ -174,7 +268,165 @@ def parse() -> dict:
             ...
             }
     '''
-ss
+    if read_mode == 0:
+        raw_data = np.fromfile(read_file, dtype=np.uint8, count=read_length)
+        if len(raw_data) == 0:
+            print("Finished reading file")
+            running = False
+            return
+
+    else:
+        read_num = 0
+        while (read_num<read_length and running):
+            try:
+                raw_data[read_num:read_num+126] = np.frombuffer(sock.recv(126), np.uint8)
+                read_num+=126
+            except BlockingIOError:
+                # Only process eventts again if it has been a tenth of a second
+                time.sleep(0.01)
+
+            except WindowsError:
+                print("Avoided socket error")
+                read_num = 0
+
+        if (not running):
+            return
+
+        '''
+    if (next_process_events==0):
+        draw_start_time = time.perf_counter()
+        app.process_events()
+        draw_time += time.perf_counter()-draw_start_time
+    next_process_events = 0 
+        '''
+
+    if write_mode:
+        raw_data.tofile(write_file)
+    # Add the remaining bytes from the p
+    data_arr = np.concatenate([last_ind_arr, raw_data])
+    # Must process the gui so it does not freeze
+
+
+    calc_start_time = time.perf_counter()
+    
+    inds = find_SYNC(data_arr)
+    if len(inds)==0:
+        print("No valid sync frames")
+        return
+
+    # Save last index for next cycle
+    last_ind_arr = data_arr[inds[-1]:]
+
+    # Check for all indexes if the length between them is correct
+    inds = inds[:-1][(np.diff(inds) == PACKET_LENGTH)]
+
+    #
+    inds = inds[:-1][(np.diff(data_arr[inds + 6]) != 0)]
+
+    all_minframes = data_arr[inds[:, None] + e].astype(int)
+
+    # Frame types
+    protocol_minframes = [all_minframes,
+        all_minframes[np.where(all_minframes[:, 57] & 3 == 1)],
+        all_minframes[np.where(all_minframes[:, 57] & 3 == 2)],
+        all_minframes[np.where(all_minframes[:, 5] % 2 == 1)],
+        all_minframes[np.where(all_minframes[:, 5] % 2 == 0)]]
+    
+    # Gps bytes are at 6, 26, 46, 66 when the next byte == 128
+    gps_raw_data = all_minframes[:, [6, 26, 46, 66]].flatten()
+    gps_check = all_minframes[:, [7, 27, 47, 67]].flatten()
+    gps_data_d = gps_raw_data[np.where(gps_check==128)]
+    
+    # Gps indices
+    gps_inds = np.array([])
+    if len(gps_data_d)>0:
+        gps_inds = find_RV(gps_data_d)
+    
+    # Check if last index is inside the gps stream
+    if len(gps_inds)>0 and gps_inds[-1]+RV_LEN>len(gps_data_d):
+        gps_inds = gps_inds[:-1]
+
+    # Parse gps data when there are bytes available
+    if len(gps_inds)>0:
+        if len(gps_data_d) - gps_inds[-1] < RV_LEN:
+            gps_inds = gps_inds[:-1]
+
+        gpsmatrix = gps_data_d[np.add.outer(gps_inds, np.arange(48))].astype(np.uint32)
+
+        # Number of rv packets
+        num_RV = np.shape(gpsmatrix)[0]
+
+        # All rv_packets whose checksum is equal to the last 2 bytes
+        valid_rv_packets = np.zeros(num_RV, dtype=bool)
+        for i in range(num_RV):
+            valid_rv_packets[i] = crc_16(gpsmatrix[i,:-3]) == (gpsmatrix[i, -2]<<8) | gpsmatrix[i, -3]
+        gpsmatrix = gpsmatrix[np.where(valid_rv_packets)].astype(np.uint64)
+
+        # Get num_rv after eliminating frames that did not pass the checksum
+        num_RV = np.shape(gpsmatrix)[0]
+
+        # Signed position data
+        gps_pos_ecef = (((gpsmatrix[:, [12, 20, 28]] << 32) |
+                        (gpsmatrix[:, [11, 19, 27]] << 24) |
+                        (gpsmatrix[:, [10, 18, 26]] << 16) |
+                        (gpsmatrix[:, [ 9, 17, 25]] <<  8) |
+                        (gpsmatrix[:, [16, 24, 32]])) - 
+                        ((gpsmatrix[:, [12, 20, 28]]>=128)*(1<<40))).transpose()/10000
+        
+        gps_vel_ecef = (((gpsmatrix[:, [36, 40, 44]] << 20) |
+                            (gpsmatrix[:, [35, 39, 43]] << 12) |
+                            (gpsmatrix[:, [34, 38, 42]] << 4)  |
+                            (gpsmatrix[:, [33, 37, 41]] >> 4)) -
+                            ((gpsmatrix[:, [36, 40, 44]]>=128)*(1<<28))).transpose()/10000
+
+
+        # Replace old data with new data from the start of the array
+        gps_data["lat"][:num_RV], gps_data["lon"][:num_RV],  gps_data["alt"][:num_RV] = ecef2geodetic(*gps_pos_ecef) # Use ecef2geodetic to get position in lat, lon, alt
+
+        gps_data["veast"][:num_RV], gps_data["vnorth"][:num_RV], gps_data["vup"][:num_RV] = ecef2enuv(*gps_vel_ecef, gps_data["lat"][:num_RV], gps_data["lon"][:num_RV]) # Use ecef2enuv to get velocity in east, north, up 
+
+        gps_data["shorz"][:num_RV] = np.hypot(gps_data["veast"][:num_RV], gps_data["vnorth"][:num_RV]) # Get horizontal speed from the hypotonuse of east and north velocity
+
+        gps_data["numsats"][:num_RV] = gpsmatrix[:, 15] & 0b00011111 # 0001-1111 -> take 5 digits
+        
+        # Shift data to the left by num_RV and set the last parsed value as text
+        for val in GPS_NAMES_ID:
+            gps_data[val] = np.roll(gps_data[val], -num_RV)
+        
+        '''
+            gps_values[val].setText(f"{gps_data[val][-1] : .{DEC_PLACES}f}") #.rstrip('0') to remove zeros
+
+
+        for gps_markers in gps2d_points:
+            gps_markers.set_data(pos=np.transpose(np.array([gps_data["lon"], gps_data["lat"]])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
+        lon3d = (gps_data["lon"]-lonlim[0])/(lonlim[1]-lonlim[0])
+        lat3d = (gps_data["lat"]-latlim[0])/(latlim[1]-latlim[0])
+        alt3d = (gps_data["alt"]-altlim[0])/(altlim[1]-altlim[0])
+        for gps_markers in gps3d_points:
+            gps_markers.set_data(pos=np.transpose(np.array([lon3d, lat3d, alt3d])) ,face_color="#ff0000", edge_width=0, size=3, symbol='s')
+        '''
+
+
+    # check if plt_hertz time has elapsed, set do_update to true 
+    for d, minframes in zip(data_channels.values(), protocol_minframes):
+        for i in d:
+            i.new_data(minframes)
+
+    # Update digital accelerometer temperature
+    acc_dig_temp_data[:len(protocol_minframes[2])] = ((protocol_minframes[2][:, 61]&15)<<8 | protocol_minframes[2][:, 62]).transpose()
+    acc_dig_temp_data = np.roll(acc_dig_temp_data, -len(protocol_minframes[2]))
+    
+    if acc_dig_temp != None:
+        acc_dig_temp.setText(f"{acc_dig_temp_data[-1]: .{DEC_PLACES}f}")
+
+    calc_time += time.perf_counter()-calc_start_time
+
+    # Pause when reading a file
+    if (read_mode == 0):
+        pause_time = max((1/plot_hertz) - (time.perf_counter()-start_time), 0) 
+        time.sleep(pause_time)
+        start_time = time.perf_counter()
+
 class Channel:
     def __init__(self, color, signed, numpoints, *raw_byte_info):
         self.signed = signed
@@ -189,7 +441,7 @@ class Channel:
             
             ind = raw_byte_info[i-2]
             mask = raw_byte_info[i-1]
-            shift = int(bit_num - math.log2(mask & -mask))
+            shift = int(bit_num - log2(mask & -mask))
 
             self.byte_info.append([ind, mask, shift])            
             bit_num += mask.bit_count()
@@ -203,8 +455,6 @@ class Channel:
 
         self.datay = np.zeros(numpoints)
         self.datax = np.arange(numpoints)
-
-        self.line = scene.Markers(pos=np.transpose(np.array([self.datax, self.datay])), edge_width=0, size=1, face_color=self.color, antialias=False)
 
     def new_data(self, minframes):
         l = len(minframes)
@@ -270,6 +520,8 @@ class Housekeeping:
          
 
         self.data = np.roll(self.data, -inds.size, axis=1)
+        
+        '''
         hkrange = min(self.maxhkrange, inds.size)
 
         for edit, data_row in zip(self.values, self.data):
@@ -278,11 +530,17 @@ class Housekeeping:
                     edit.setText("null")
                 else:
                     edit.setText(f"{np.average(data_row[-hkrange:]): .{DEC_PLACES}f}")
+        '''
 
     def reset(self):
         self.data = np.zeros((10, self.numpoints))
         for value in self.values:
             value.setText("")
+
 if __name__ == "__main__":
-    #init()
-    #parse
+    init(format_file="C:/Users/ayash/Programming/vortex_parser/lib/mission127(PIP).xlsx",
+         udp_ip="127.0.0.1",
+         udp_port="5000")
+
+    #   , read_mode=1 udp_ip="127.0.0.1", udp_port="5000", read_file_name="", write_mode=0, write_file_name="", hk_units=1, plot_hertz=5, plot_width=5) -> None:
+    parse()
