@@ -24,7 +24,10 @@ bytes_ps = PACKET_LENGTH * 5000 # bytes_ps will be manually set in the excel for
 # Types of frames
 PROTOCOLS = ['all', 'odd frame', 'even frame', 'odd sfid', 'even sfid']
 
-data_channels = []
+data_channels = {} # Sort channels and hk by protocol
+all_data = {}
+
+MAX_NUMPOINTS = 50000
 
 # GPS label names
 GPS_NAMES_ID = ["lon", "lat", "alt", "veast", "vnorth", "vup", "shorz", "numsats"]
@@ -36,6 +39,7 @@ gps_data = None
 
 # Housekeeping coefficients and constants for converting from counts to units
 hkunits = True # When true counts will be converted to units
+HK_LENGTH = 11
 HK_NAMES =          ["Temp1" , "Temp2" , "Temp3" , "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3 V", "VBat Mon"]
 HK_COEF  = np.array([-76.9231, -76.9231, -76.9231, -76.9231   , 16     , 6.15   , 7.329  , 3     ,  2      , 2         ], dtype=np.float64)[:, None]
 HK_ADD   = np.array([202.54  , 202.54  , 202.54  , 202.54     , 0      , -16.88 , 0      , 0     ,  0      , 0         ], dtype=np.float64)[:, None]
@@ -62,6 +66,7 @@ read_file = None
 write_mode = False
 write_file = None
 raw_data = None
+last_ind_arr = np.empty(0)
 
 # Plot rate settings
 plot_hertz = 5
@@ -69,6 +74,12 @@ plot_width = 5
 
 # Excel Sheet
 xl_sheet = None
+# The type of values in the excel sheet
+GRAPH_ROW_TYPE =   [str, str, int,  int,  str, str, int]
+CHANNEL_ROW_TYPE = [str, str, bool, list, list]
+MAP_ROW_TYPE =     [str, str, int,  int,  str]
+HK_ROW_TYPE =      [str, int, str,  int,  list, list, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool]
+
 def getval(cell, t):
     '''
     Read a cell with
@@ -83,8 +94,7 @@ def getval(cell, t):
     elif t==bool:
         return val
     elif t==list:
-        return [int(i) for i in val.split(';')]
-
+        return [int(i) for i in str(val).split(';')]
     else:
         return val
         
@@ -111,24 +121,14 @@ def find_RV(seq):
     return candidates[mask]
 
 def add_channel(graph_name, protocol, signed, byte_ind, bitmask):
-    signed = signed=="True"
-    byte_info = [int(i) for i in byte_info]
-    # Take last added graph
-
-    channel = Channel(signed, byte_ind, bitmask)
-
     # Graph must fit the channel data
-    data_channels[protocol].append(channel)
+    data_channels[graph_name] = Channel(protocol, signed, byte_ind, bitmask)
+    all_data[name] = None
 
-def add_housekeeping(protocol, board_id, length, numpoints, byte_ind, bitmask, hkvalues):
-    board_id = int(board_id)
-    length = int(length)
-    numpoints = int(numpoints)
-    byte_ind = [int(i) for i in byte_ind.split(',')] # takes list of ints
-    bitmask = [int(i) for i in bitmask.split(',')] # takes list of ints
+def add_housekeeping(name, numpoints, protocol, board_id, byte_ind, bitmask, *hkvalues):
+    data_channels[name] = Housekeeping(board_id,  protocol, numpoints, byte_ind, bitmask)
+    all_data[name] = None
 
-    housekeeping_ = Housekeeping(board_id, length, numpoints, byte_ind, bitmask, hkvalues)
-    data_channels[protocol].append(housekeeping_)
 
 
 def crc_16(arr):
@@ -184,7 +184,7 @@ def init(format_file, read_mode=1, udp_ip="127.0.0.1", udp_port="5000", read_fil
     read_length += 126 - (read_length%126)
 
     # Set up gps data dictionary
-    gps_data = {gps_name:np.zeros(getval("D4", int)*width, float) for gps_name in GPS_NAMES_ID}
+    #gps_data = {gps_name:np.zeros([getval("D4", int)*width], float) for gps_name in GPS_NAMES_ID}
 
     # Set hk units
     hk_units = do_hkunits
@@ -206,38 +206,41 @@ def init(format_file, read_mode=1, udp_ip="127.0.0.1", udp_port="5000", read_fil
         elif row[0][0] == '#':
             add_channel(*row)
     '''
+    '''
+    graph_rows = getval("D6", list)
+    for row_num in range(graph_rows[0],graph_rows[1]+1):
+        name = getval("D"+str(row_num), str)
+        numpoints = getval("I"+str(row_num), str)
+        graph_numpoints[name] = numpoints
+    '''
+
     # Channels
-    graph_rows = getval("D7", list)
-    for row_num in range(graph_rows[0], graph_rows[1]+1):
+    channel_rows = getval("D7", list)
+    for row_num in range(channel_rows[0],channel_rows[1]+1):
+        row = [getval(chr(i)+str(row_num),t) for i, t in zip(range(ord('C'),ord('C')+len(CHANNEL_ROW_TYPE)), CHANNEL_ROW_TYPE)]
+        add_channel(*row)
 
     # Housekeeping
-    hk_rows = getval("D8", list)
-    for row_num in range(int(hk_rows[0]), int(hk_rows[1])+1):
-        row = [getval("D"+str(row_num))]
-        i = 1
-        while row[-1] != "None":
-            row.append( getval(chr(ord("D")+i) + str(row_num)) )
-            i += 1
-        # Remove last cell which is "None"
-        row = row[:-1]
-
-        if len(row) == 0:
-            continue
+    hk_rows = getval("D9", list)
+    for row_num in range(hk_rows[0], hk_rows[1]+1):
+        row = [getval(chr(i)+str(row_num),t) for i, t in zip(range(ord('C'), ord('C')+len(HK_ROW_TYPE)), HK_ROW_TYPE)]
+        add_housekeeping(*row)
+    '''
+        if (row[0]=="ACC"):
+            add_housekeeping(*row[1:7])
         else:
-            if (row[0]=="ACC"):
-                add_housekeeping(*row[1:7])
-            else:
-                add_housekeeping(*row[1:7])
+            add_housekeeping(*row[1:7])
+    '''
             
     '''
     self.valuesWidget.show()
     plotting.finish_creating()
     ''' 
 
+    raw_data = np.zeros(bytes_ps)
     if read_mode == 0:
         print("Opening recording")
         read_file = open(read_file_name, "rb")
-        raw_data = np.zeros(read_length)
 
     elif read_mode == 1:
         print("Connecting Socket...")
@@ -267,27 +270,33 @@ def parse() -> dict:
             "HKmNLP" : [18, 1, 2 ...]
             ...
             }
+        
     '''
-    if read_mode == 0:
-        raw_data = np.fromfile(read_file, dtype=np.uint8, count=read_length)
+    global running, raw_data, last_ind_arr
+    running = True
+    cur_length = 0
+    if read_mode == 1:
+        cur_length = min(read_length, read_file.tell())
+        raw_data[:cur_length] = np.fromfile(read_file, dtype=np.uint8, count=read_length)
         if len(raw_data) == 0:
             print("Finished reading file")
             running = False
             return
 
     else:
-        read_num = 0
-        while (read_num<read_length and running):
+        cur_length = 0
+        running = True
+        while (cur_length<read_length and running):
             try:
-                raw_data[read_num:read_num+126] = np.frombuffer(sock.recv(126), np.uint8)
-                read_num+=126
+                raw_data[cur_length:cur_length+126] = np.frombuffer(sock.recv(126), np.uint8)
+                cur_length+=126
             except BlockingIOError:
-                # Only process eventts again if it has been a tenth of a second
+                # Only process events again if it has been a tenth of a second
                 time.sleep(0.01)
 
             except WindowsError:
                 print("Avoided socket error")
-                read_num = 0
+                cur_length= 0
 
         if (not running):
             return
@@ -301,9 +310,9 @@ def parse() -> dict:
         '''
 
     if write_mode:
-        raw_data.tofile(write_file)
+        raw_data[:cur_length].tofile(write_file)
     # Add the remaining bytes from the p
-    data_arr = np.concatenate([last_ind_arr, raw_data])
+    data_arr = np.concatenate([last_ind_arr, raw_data[:cur_length]])
     # Must process the gui so it does not freeze
 
 
@@ -407,123 +416,132 @@ def parse() -> dict:
         '''
 
 
-    # check if plt_hertz time has elapsed, set do_update to true 
-    for d, minframes in zip(data_channels.values(), protocol_minframes):
-        for i in d:
-            i.new_data(minframes)
+    for name in data_channels.keys():
+        dch = data_channels[name]
+        all_data[name] = dch.new_data(protocol_minframes[dch.frame_ind])
+
 
     # Update digital accelerometer temperature
+    '''
     acc_dig_temp_data[:len(protocol_minframes[2])] = ((protocol_minframes[2][:, 61]&15)<<8 | protocol_minframes[2][:, 62]).transpose()
     acc_dig_temp_data = np.roll(acc_dig_temp_data, -len(protocol_minframes[2]))
     
     if acc_dig_temp != None:
         acc_dig_temp.setText(f"{acc_dig_temp_data[-1]: .{DEC_PLACES}f}")
+    '''
 
-    calc_time += time.perf_counter()-calc_start_time
+    #calc_time += time.perf_counter()-calc_start_time
 
     # Pause when reading a file
-    if (read_mode == 0):
+    return all_data
+    '''
+    if (read_mode == 1):
         pause_time = max((1/plot_hertz) - (time.perf_counter()-start_time), 0) 
         time.sleep(pause_time)
         start_time = time.perf_counter()
+    '''
 
 class Channel:
-    def __init__(self, color, signed, numpoints, *raw_byte_info):
+    def __init__(self, protocol, signed, byte_ind, bitmask):
+        self.frame_ind = PROTOCOLS.index(protocol)
         self.signed = signed
-        self.color = color
-
         bit_num = 0
         self.byte_info = []
 
-        for i in range(len(raw_byte_info), 0, -2): 
+        for ind, mask in zip(byte_ind, bitmask): 
             # index and mask are given
             # infer bit shift from first bit in mask and how many bits have passed
-            
-            ind = raw_byte_info[i-2]
-            mask = raw_byte_info[i-1]
             shift = int(bit_num - log2(mask & -mask))
-
             self.byte_info.append([ind, mask, shift])            
             bit_num += mask.bit_count()
 
-        self.xlims = [0, numpoints]
+        # self.xlims = [0, numpoints]
         # Infer y limits from number of bits
         if self.signed:
             self.ylims = [-2**(bit_num-1), 2**(bit_num-1)]
         else:
             self.ylims = [0, 2**bit_num]
 
-        self.datay = np.zeros(numpoints)
-        self.datax = np.arange(numpoints)
+        self.n = 0
+        self.data = np.zeros(MAX_NUMPOINTS)
+        #self.datax = np.arange(MAX_NUMPOINTS)
 
     def new_data(self, minframes):
-        l = len(minframes)
-        self.datay[:l] = np.zeros(l)
+        self.n = len(minframes)
+        self.data[:self.n] = np.zeros(self.n)
         for ind, mask, shift in self.byte_info:
             if shift < 0:
-                self.datay[:l] += (minframes[:, ind] & mask) >> abs(shift)
+                self.data[:self.n] += (minframes[:, ind] & mask) >> abs(shift)
             else:
-                self.datay[:l] += (minframes[:, ind] & mask) << shift
+                self.data[:self.n] += (minframes[:, ind] & mask) << shift
         
         if self.signed:
-            self.datay[:l] = self.datay[:l]+(self.datay[:l] >= self.ylims[1])*(2*self.ylims[0])
-        self.datay = np.roll(self.datay, -l)
+            self.data[:self.n] = self.datay[:self.n]+(self.datay[:self.n] >= self.ylims[1])*(2*self.ylims[0])
 
-        data = np.transpose(np.array([self.datax, self.datay]))
-        self.line.set_data(pos=data, edge_width=0, size=1, face_color=self.color)
+        #sself.datay = np.roll(self.datay, -l)
+
+        #data = np.transpose(np.array([self.datax, self.datay]))
+        #self.line.set_data(pos=data, edge_width=0, size=1, face_color=self.color)
+        return self.data[:self.n]
 
     def reset(self):
-        self.datay = np.zeros(self.xlims[1])
-        self.line.set_data(pos=np.transpose(np.array([self.datax, self.datay])), edge_width=0, size=1, face_color=self.color)
+        self.data = np.zeros(self.xlims[1])
+        #self.line.set_data(pos=np.transpose(np.array([self.datax, self.datay])), edge_width=0, size=1, face_color=self.color)
 
 class Housekeeping:
-    def __init__(self, board_id, length, numpoints, b_ind, b_mask, values):
-
+    def __init__(self, protocol, board_id, numpoints, b_ind, b_mask):
+        self.frame_ind = PROTOCOLS.index(protocol)
         self.b_ind, self.b_mask = b_ind, b_mask 
-        self.rate = self.b_mask[0].bit_count()/8
+        print(self.b_ind, self.b_mask)
+        self.rate = 0
+        for mask in b_mask:
+            self.rate += mask.bit_count()
 
-        self.bpf = len(self.b_ind) # bytes per frame
-        if self.rate == 8/8:
+
+        print(self.rate)
+        self.ipf = len(self.b_ind) # indexes per frame
+        if self.rate == 8:
             self.board_id = board_id
-        elif self.rate == 4/8:
+            self.length = HK_LENGTH
+        elif self.rate == 4:
             self.board_id = [board_id>>4, board_id&0xF]
+            self.length = HK_LENGTH*2
         else:
             raise ValueError("Unsupported housekeeping rate")
 
         self.numpoints = int(numpoints*self.rate)
-        self.length = 11//self.rate
 
         self.indcol = np.array(np.arange(10)//self.rate, dtype=np.uint8)[:, None]+1
         self.data = np.zeros((10, self.numpoints))
-        self.values = values
         self.maxhkrange = AVG_NUMPOINTS
 
     def new_data(self, minframes):
         minframes = minframes.astype(np.uint8)
-        databuffer = np.zeros(len(minframes)*self.bpf, dtype=np.uint8)
-        for i in range(self.bpf):
-            databuffer[np.arange(len(minframes))*self.bpf+i] = minframes[:, self.b_ind[i]] & self.b_mask[i]
-        if self.rate == 8/8: # ACC, mNLP, PIP
+        self.n = len(minframes)
+        databuffer = np.zeros(self.n*self.ipf, dtype=np.uint8)
+        for i in range(self.ipf):
+            databuffer[np.arange(self.n)*self.ipf+i] = minframes[:, self.b_ind[i]] & self.b_mask[i]
+        if self.rate == 8: # ACC, mNLP, PIP
             inds = np.where(databuffer == self.board_id)[0]
             inds = inds[np.where(np.diff(inds) == self.length)[0]]
             if inds.size != 0:
                 self.data[:, :inds.size] = databuffer[self.indcol + inds]
                 
 
-        elif self.rate == 4/8: # EFP
+        elif self.rate == 4: # EFP
             inds = np.where( (databuffer==self.board_id[0])[:-1] & (databuffer==self.board_id[1])[1:])[0]
             inds = inds[np.where(np.diff(inds) == self.length)[0]][:-1]
             self.data[:, :inds.size] = databuffer[self.indcol + inds]<<4 | databuffer[self.indcol+1 + inds]
 
-        if do_hkunits:
+        if hkunits:
             self.data[:, :inds.size] = HK_COEF * (self.data[:, :inds.size]*2.5/256 - 0.5*2.5/256) + HK_ADD
          
 
-        self.data = np.roll(self.data, -inds.size, axis=1)
+        #self.data = np.roll(self.data, -inds.size, axis=1)
         
         '''
         hkrange = min(self.maxhkrange, inds.size)
-
+    
         for edit, data_row in zip(self.values, self.data):
             if edit.isEnabled():
                 if hkrange==0:
@@ -538,9 +556,8 @@ class Housekeeping:
             value.setText("")
 
 if __name__ == "__main__":
-    init(format_file="C:/Users/ayash/Programming/vortex_parser/lib/mission127(PIP).xlsx",
+    init(format_file="C://Users//ayash//Programming//vortex_parser//testing//mm.xlsx",
          udp_ip="127.0.0.1",
-         udp_port="5000")
+         udp_port=5000)
 
-    #   , read_mode=1 udp_ip="127.0.0.1", udp_port="5000", read_file_name="", write_mode=0, write_file_name="", hk_units=1, plot_hertz=5, plot_width=5) -> None:
     parse()
