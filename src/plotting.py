@@ -1,7 +1,7 @@
 """
 Module to handle plotting, housekeeping, and GPS
 
-Written for the Space and Atmospheric Instrumentation Laboratory
+Written for the Space and Atmospheric Instrumentation Laboratory at ERAU
 by Yash Jain
 """
 import time, math
@@ -16,6 +16,7 @@ from pymap3d.ecef import ecef2geodetic, ecef2enuv
 
 from scipy.io import loadmat
 
+import parsing
 
 SYNC = [64, 40, 107, 254]
 MINFRAME_LEN = 2 * 40
@@ -40,7 +41,7 @@ plot_width = 5
 do_write = False
 write_file = None
 
-HK_NAMES = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3 V", "VBat Mon"]
+HK_NAMES = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3 V", "VBat Mon", "Dig ACC"]
 GPS_NAMES = ["Longitude (deg)", "Latitude (deg)", "Altitude (km)", "vEast (m/s)", "vNorth (m/s)", "vUp (m/s)", "Horz. Speed (m/s)", "Num Sats"]
 GPS_NAMES_ID = ["lon", "lat", "alt", "veast", "vnorth", "vup", "shorz", "numsats"]
 
@@ -93,13 +94,6 @@ def find_RV(seq):
     candidates = np.where(np.correlate(seq, rv_arr, mode='valid') == target_rv)[0]
     check = candidates[:, np.newaxis] + np.arange(5)
     mask = np.all((np.take(seq, check) == rv_arr), axis=-1)
-    return candidates[mask]
-
-def find_subarray(sub_arr, arr):
-    target = np.dot(sub_arr, sub_arr)
-    candidates = np.where(np.correlate(arr, sub_arr, mode='valid') == target)[0]
-    check = candidates[:, np.newaxis] + np.arange(len(sub_arr))
-    mask = np.all((np.take(arr, check) == sub_arr), axis=-1)
     return candidates[mask]
 
 def set_hkunits(hkunits):
@@ -275,7 +269,6 @@ def crc_16(arr):
 
 def parse(read_mode, plot_hertz, read_file_name, udp_ip, udp_port):
         global running, gps_data, acc_dig_temp_data, sock_rep, sock_wait
-
         # Read length is the bytes in each hertz
         # Must be multiple of 126 since that is datagram length
         read_length = bytes_ps//plot_hertz
@@ -376,8 +369,6 @@ def parse(read_mode, plot_hertz, read_file_name, udp_ip, udp_port):
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 1)],
                 all_minframes[np.where(all_minframes[:, 5] % 2 == 0)]]
             
-            ################################### GPS ###################################
-
             # Gps bytes are at 6, 26, 46, 66 when the next byte == 128
             gps_raw_data = all_minframes[:, [6, 26, 46, 66]].flatten()
             gps_check = all_minframes[:, [7, 27, 47, 67]].flatten()
