@@ -78,7 +78,7 @@ xl_sheet = None
 GRAPH_ROW_TYPE =   [str, str, int,  int,  str, str, int]
 CHANNEL_ROW_TYPE = [str, str, bool, list, list]
 MAP_ROW_TYPE =     [str, str, int,  int,  str]
-HK_ROW_TYPE =      [str, int, str,  int,  list, list, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool]
+HK_ROW_TYPE =      [str, int, str,  int,  list, list, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool]
 
 def getval(cell, t):
     '''
@@ -87,6 +87,7 @@ def getval(cell, t):
     if xl_sheet==None:
         return None
     val = xl_sheet[cell].value
+    print(val)
     if t==int:
         return val
     elif t==str:
@@ -123,11 +124,11 @@ def find_RV(seq):
 def add_channel(graph_name, protocol, signed, byte_ind, bitmask):
     # Graph must fit the channel data
     data_channels[graph_name] = Channel(protocol, signed, byte_ind, bitmask)
-    all_data[name] = None
+    all_data[graph_name] = None
 
 def add_housekeeping(name, numpoints, protocol, board_id, byte_ind, bitmask, *hkvalues):
-    data_channels[name] = Housekeeping(board_id,  protocol, numpoints, byte_ind, bitmask)
-    all_data[name] = None
+    data_channels["hk_"+name] = Housekeeping(protocol, board_id, numpoints, byte_ind, bitmask)
+    all_data["hk_"+name] = None
 
 
 
@@ -476,7 +477,7 @@ class Channel:
                 self.data[:self.n] += (minframes[:, ind] & mask) << shift
         
         if self.signed:
-            self.data[:self.n] = self.datay[:self.n]+(self.datay[:self.n] >= self.ylims[1])*(2*self.ylims[0])
+            self.data[:self.n] = self.data[:self.n]+(self.data[:self.n] >= self.ylims[1])*(2*self.ylims[0])
 
         #sself.datay = np.roll(self.datay, -l)
 
@@ -489,13 +490,11 @@ class Channel:
         #self.line.set_data(pos=np.transpose(np.array([self.datax, self.datay])), edge_width=0, size=1, face_color=self.color)
 
 class Housekeeping:
-    def __init__(self, protocol, board_id, numpoints, b_ind, b_mask):
+    def __init__(self,protocol, board_id, numpoints, b_ind, b_mask):
         self.frame_ind = PROTOCOLS.index(protocol)
         self.b_ind, self.b_mask = b_ind, b_mask 
         print(self.b_ind, self.b_mask)
-        self.rate = 0
-        for mask in b_mask:
-            self.rate += mask.bit_count()
+        self.rate = b_mask[0].bit_count()
 
 
         print(self.rate)
@@ -507,6 +506,7 @@ class Housekeeping:
             self.board_id = [board_id>>4, board_id&0xF]
             self.length = HK_LENGTH*2
         else:
+            print(self.rate)
             raise ValueError("Unsupported housekeeping rate")
 
         self.numpoints = int(numpoints*self.rate)
@@ -550,14 +550,15 @@ class Housekeeping:
                     edit.setText(f"{np.average(data_row[-hkrange:]): .{DEC_PLACES}f}")
         '''
 
+        return self.data[:self.n]
     def reset(self):
         self.data = np.zeros((10, self.numpoints))
         for value in self.values:
             value.setText("")
 
 if __name__ == "__main__":
-    init(format_file="C://Users//ayash//Programming//vortex_parser//testing//mm.xlsx",
+    init(format_file="C:/Users/ayash/Programming/vortex_parser/lib/test.xlsx",
          udp_ip="127.0.0.1",
          udp_port=5000)
 
-    parse()
+    print(parse())

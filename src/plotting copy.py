@@ -16,7 +16,6 @@ from pymap3d.ecef import ecef2geodetic, ecef2enuv
 
 from scipy.io import loadmat
 
-import parsing
 
 SYNC = [64, 40, 107, 254]
 MINFRAME_LEN = 2 * 40
@@ -41,7 +40,7 @@ plot_width = 5
 do_write = False
 write_file = None
 
-HK_NAMES = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3 V", "VBat Mon", "Dig ACC"]
+HK_NAMES = ["Temp1", "Temp2", "Temp3", "Int. Temp", "V Bat", "-12 V", "+12 V", "+5 V", "+3.3 V", "VBat Mon"]
 GPS_NAMES = ["Longitude (deg)", "Latitude (deg)", "Altitude (km)", "vEast (m/s)", "vNorth (m/s)", "vUp (m/s)", "Horz. Speed (m/s)", "Num Sats"]
 GPS_NAMES_ID = ["lon", "lat", "alt", "veast", "vnorth", "vup", "shorz", "numsats"]
 

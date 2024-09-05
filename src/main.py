@@ -17,6 +17,28 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (QApplication, QGridLayout, QGroupBox, QComboBox, QHBoxLayout, QFrame, QMainWindow,
                              QPushButton, QWidget, QLabel, QLineEdit, QFileDialog, QSpinBox, QDialog)
 
+xl_sheet = None
+GRAPH_ROW_TYPE =   [str, str, int,  int,  str, str, int]
+CHANNEL_ROW_TYPE = [str, str, bool, list, list]
+MAP_ROW_TYPE =     [str, str, int,  int,  str]
+HK_ROW_TYPE =      [str, int, str,  int,  list, list, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool, bool]
+def getval(cell, t):
+    '''
+    Read a cell with
+    '''
+    if xl_sheet==None:
+        return None
+    val = xl_sheet[cell].value
+    if t==int:
+        return val
+    elif t==str:
+        return val
+    elif t==bool:
+        return val
+    elif t==list:
+        return [int(i) for i in str(val).split(';')]
+    else:
+        return val
 
 class QSelectedGroupBox(QGroupBox):
     """
@@ -75,6 +97,7 @@ class Window(QMainWindow):
             self.changeInstr(file_path)
         
     def changeInstr(self, file_path):
+        global xl_sheet
         if self.instr_file == file_path:
             return
 
@@ -93,46 +116,36 @@ class Window(QMainWindow):
         plotting.plot_width = self.plotWidthSpin.value()
         
         xl_sheet = load_workbook(file_path, data_only=True).active
-        getval = lambda c: str(xl_sheet[c].value)
 
         # Bytes/second
-        bps = int(getval("G3"))
+        bps = getval("D3", int)
         plotting.set_max_read_length(bps)
 
-        # Plots
-        graph_row_start, graph_row_end = getval("C3"), getval("D3")
-        for row_num in range(int(graph_row_start), int(graph_row_end)+1):
-            row = [getval("B"+str(row_num))]
-            i = 1
-            while row[-1] != "None":
-                row.append( getval(chr(ord("B")+i) + str(row_num)) )
-                i += 1
-            # Remove last cell "None"
-            row = row[:-1]
+        # Graphs
+        graph_rows = getval("D6", list)
+        for row_num in range(graph_rows[0],graph_rows[1]+1):
+            row = [getval(chr(i)+str(row_num),t) for i, t in zip(range(ord('C'),ord('C')+len(GRAPH_ROW_TYPE)), GRAPH_ROW_TYPE)]
+            plotting.add_graph(*row)
 
-            if len(row) == 0:
-                continue
-            elif row[0][0] == '#':
-                plotting.add_channel(*row)
-            else:
-                plotting.add_graph(*row)
+        # Channels
+        channel_rows = getval("D7", list)
+        for row_num in range(channel_rows[0],channel_rows[1]+1):
+            row = [getval(chr(i)+str(row_num),t) for i, t in zip(range(ord('C'),ord('C')+len(CHANNEL_ROW_TYPE)), CHANNEL_ROW_TYPE)]
+            plotting.add_channel(*row)
 
         # Map
-        map_row_start, map_row_end = getval("C4"), getval("D4")
-        for row_num in range(int(map_row_start), int(map_row_end)+1):
-            row = [getval("B"+str(row_num))]
-            i = 1
-            while row[-1] != "None":
-                row.append( getval(chr(ord("B")+i) + str(row_num)) )
-                i += 1
-            # Remove last cell "None"
-            row = row[:-1]
-
-            if len(row) == 0:
-                continue
-            else:
-                plotting.add_map(*row)
+        map_rows = getval("D8", list)
+        for row_num in range(map_rows[0],map_rows[1]+1):
+            row = [getval(chr(i)+str(row_num),t) for i, t in zip(range(ord('C'),ord('C')+len(MAP_ROW_TYPE)), MAP_ROW_TYPE)]
+            plotting.add_map(*row)
                 
+        # Housekeeping
+        hk_rows = getval("D9", list)
+        for row_num in range(hk_rows[0], hk_rows[1]+1):
+            row = [getval(chr(i)+str(row_num),t) for i, t in zip(range(ord('C'), ord('C')+len(HK_ROW_TYPE)), HK_ROW_TYPE)]
+            hkValues = self.addHousekeeping(row[0], row[8:], plotting.HK_NAMES)
+            plotting.add_housekeeping(*row)
+        
         # Housekeeping
         hk_row_start, hk_row_end = getval("C5"), getval("D5")
         for row_num in range(int(hk_row_start), int(hk_row_end)+1):
