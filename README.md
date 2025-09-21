@@ -1,6 +1,9 @@
 # VortEx Parser
 Real time data parsing and plotting for VortEx. Made for the Space and Atmospheric Instrumentation Lab at ERAU.
 
+<img width="1381" height="542" alt="image" src="https://github.com/user-attachments/assets/4e946b0b-b62f-494b-82e5-6d1bb1fe14ca" />
+<img width="1117" height="529" alt="image" src="https://github.com/user-attachments/assets/331c6e38-4db1-41c4-99e7-a6ef5ddabc81" />
+
 ##
 ### Setup
 Requires python >= 3.10
